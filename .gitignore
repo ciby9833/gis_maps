@@ -1,0 +1,85 @@
+# 环境变量文件 - 绝对不能提交到版本控制
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.staging
+*.env
+
+# 操作系统文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# IDE和编辑器文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
+
+# 临时文件
+*.tmp
+*.temp
+*.log
+*.pid
+*.lock
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+
+# 备份文件
+*.bak
+*.backup
+*_backup.*
+
+# 压缩文件
+*.zip
+*.rar
+*.tar.gz
+*.7z
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Node.js 依赖
+node_modules/
+
+# 构建输出
+dist/
+build/
+
+# 测试覆盖率
+coverage/
+.coverage
+.nyc_output
+
+# 文档生成
+docs/_build/
+
+# MacOS
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.nfs* 

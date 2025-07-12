@@ -1,0 +1,104 @@
+# Python环境变量文件
+.env
+.env.local
+.env.development
+.env.production
+.env.staging
+.env.test
+*.env
+
+# Python虚拟环境
+venv/
+env/
+ENV/
+.venv/
+.ENV/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Python缓存和编译文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+.Python
+
+# 测试和覆盖率
+.tox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# Poetry
+poetry.lock
+
+# 数据库
+*.db
+*.sqlite
+*.sqlite3
+instance/
+
+# 日志文件
+*.log
+logs/
+
+# 敏感配置文件
+config_local.py
+local_settings.py
+
+# IDE配置
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+
+# FastAPI/Uvicorn
+.uvicorn/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Redis dump
+dump.rdb
+
+# Backup files
+*.backup
+*.sql 
