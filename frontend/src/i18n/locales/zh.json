@@ -7,7 +7,10 @@
   },
   "header": {
     "systemInfo": "系统信息",
-    "github": "GitHub"
+    "systemInfoDesc": "查看系统版本和技术信息",
+    "github": "GitHub",
+    "settings": "设置",
+    "currentLanguage": "当前语言"
   },
   "sidebar": {
     "systemStatus": "系统状态",
@@ -164,7 +167,9 @@
   "toolbar": {
     "language": "语言",
     "chinese": "中文",
-    "english": "English"
+    "english": "English",
+    "selectLanguage": "选择语言",
+    "languageAutoSaved": "语言设置将自动保存"
   },
   "fence": {
     "management": "围栏管理",

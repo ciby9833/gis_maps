@@ -6,8 +6,11 @@
     "loadingConfig": "Loading Config"
   },
   "header": {
-    "systemInfo": "System Information",
-    "github": "GitHub"
+    "systemInfo": "System Info",
+    "systemInfoDesc": "View system version and technical information",
+    "github": "GitHub",
+    "settings": "Settings",
+    "currentLanguage": "Current Language"
   },
   "sidebar": {
     "systemStatus": "System Status",
@@ -164,7 +167,9 @@
   "toolbar": {
     "language": "Language",
     "chinese": "中文",
-    "english": "English"
+    "english": "English",
+    "selectLanguage": "Select Language",
+    "languageAutoSaved": "Language settings will be saved automatically"
   },
   "fence": {
     "management": "Fence Management",

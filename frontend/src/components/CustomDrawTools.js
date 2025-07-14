@@ -566,14 +566,14 @@ const CustomDrawTools = ({
 
     mapContainer.appendChild(overlay);
     drawingOverlayRef.current = overlay;
-    
+
   }, [map]);
 
   // 激活绘制覆盖层
   const activateDrawingOverlay = useCallback(() => {
     if (drawingOverlayRef.current) {
       drawingOverlayRef.current.style.pointerEvents = 'auto';
-              drawingOverlayRef.current.style.cursor = 'crosshair';
+      drawingOverlayRef.current.style.cursor = 'crosshair';
         drawingOverlayRef.current.style.zIndex = '10000'; // 确保在最上层
       }
   }, []);

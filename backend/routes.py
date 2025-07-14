@@ -769,13 +769,13 @@ async def get_pois(
         strategy = get_layer_zoom_strategy('pois', zoom or 1)
     except:
         # 回退到原有策略
-        if zoom is None or zoom < 12:
-            return {
-                "type": "FeatureCollection", 
-                "features": [],
-                "zoom_info": {"zoom": zoom, "reason": "zoom_too_low"},
-                "performance": {"query_time": time.time() - start_time, "cache_hit": False}
-            }
+    if zoom is None or zoom < 12:
+        return {
+            "type": "FeatureCollection", 
+            "features": [],
+            "zoom_info": {"zoom": zoom, "reason": "zoom_too_low"},
+            "performance": {"query_time": time.time() - start_time, "cache_hit": False}
+        }
         strategy = {'load_data': True, 'max_features': 5000}
     
     if not strategy.get('load_data'):

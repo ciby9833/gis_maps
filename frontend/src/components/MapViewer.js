@@ -519,7 +519,7 @@ const MapViewer = ({
             }
           }));
         }
-          } else {
+      } else {
         // 其他图层数据处理
         if (data.type === 'FeatureCollection' && data.features) {
           processedData = data;
