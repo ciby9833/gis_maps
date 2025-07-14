@@ -113,15 +113,11 @@ const FenceDetailDialog = ({
       // 处理重叠检测结果
       if (overlapResult.status === 'fulfilled') {
         setOverlapData(overlapResult.value);
-      } else {
-        console.error('重叠检测失败:', overlapResult.reason);
       }
 
       // 处理图层分析结果
       if (layerResult.status === 'fulfilled') {
         setLayerAnalysis(layerResult.value);
-      } else {
-        console.error('图层分析失败:', layerResult.reason);
       }
 
     } catch (error) {
@@ -195,7 +191,10 @@ const FenceDetailDialog = ({
       maxWidth="md"
       fullWidth
       PaperProps={{
-        sx: { maxHeight: '90vh' }
+        sx: { 
+          maxHeight: '90vh',
+          zIndex: 10003 // 确保对话框在绘制工具之上
+        }
       }}
     >
       <DialogTitle>

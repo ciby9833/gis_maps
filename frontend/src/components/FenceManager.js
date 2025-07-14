@@ -173,7 +173,6 @@ const FenceManager = ({
     try {
       // 这里可以实现搜索逻辑
       // 暂时使用过滤已加载的数据
-      console.log('搜索围栏:', searchQuery);
     } catch (error) {
       console.error('搜索围栏失败:', error);
     }
@@ -215,7 +214,6 @@ const FenceManager = ({
       // 重新加载数据
       await loadFenceData();
       
-      console.log(t('fenceManager.deleteSuccess'), fence.fence_name);
     } catch (error) {
       console.error(t('fenceManager.deleteFailed'), error);
       alert(t('fenceManager.deleteFailed') + ': ' + error.message);
@@ -299,7 +297,11 @@ const FenceManager = ({
         maxWidth="lg"
         fullWidth
         PaperProps={{
-          sx: { minHeight: '70vh', maxHeight: '90vh' }
+          sx: { 
+            minHeight: '70vh', 
+            maxHeight: '90vh',
+            zIndex: 10003 // 确保对话框在绘制工具之上
+          }
         }}
       >
         <DialogTitle>

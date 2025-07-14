@@ -98,29 +98,29 @@ const LocationIndicator = ({ selectedLocation, currentZoom }) => {
 
       {locationInfo && (
         <Box sx={{ mt: 1 }}>
-          <Chip
+                <Chip 
             icon={locationInfo.is_on_land ? <Terrain /> : <WaterDrop />}
             label={locationInfo.is_on_land ? 
               `✅ ${t('map.onLand')}` : 
               `❌ ${t('map.inWater')}`
             }
             color={locationInfo.is_on_land ? 'success' : 'warning'}
-            size="small"
+                  size="small" 
             sx={{ mr: 1, mb: 1 }}
           />
           
           {locationInfo.distance_to_coast !== undefined && (
-            <Chip
+                <Chip 
               icon={<LocationOn />}
               label={`${locationInfo.distance_to_coast < 0.1 ? 
                 t('map.coastalArea') : 
                 `${locationInfo.distance_to_coast.toFixed(1)}km ${t('map.fromCoast')}`
               }`}
-              color="info"
-              size="small"
+                  color="info" 
+                  size="small" 
               sx={{ mr: 1, mb: 1 }}
-            />
-          )}
+                />
+            )}
           
           {locationInfo.validation_method && (
             <Chip
@@ -130,7 +130,7 @@ const LocationIndicator = ({ selectedLocation, currentZoom }) => {
               sx={{ mr: 1, mb: 1 }}
             />
           )}
-          
+
           <Box sx={{ mt: 1, display: 'flex', alignItems: 'center' }}>
             <Tooltip title={t('map.basedOnGlobalData')}>
               <IconButton size="small">

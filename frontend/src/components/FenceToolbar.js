@@ -120,10 +120,28 @@ const FenceToolbar = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const [drawingMode, setDrawingMode] = useState('polygon'); // 'polygon' | 'rectangle'
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
+  const [anchorCount, setAnchorCount] = useState(0); // 跟踪锚点数量
 
   // 地图绘制相关
   const drawLayerRef = useRef(null);
   const isInitializedRef = useRef(false);
+
+  // 更新锚点数量
+  const updateAnchorCount = useCallback(() => {
+    if (mapInstance?.customDrawTools) {
+      const count = mapInstance.customDrawTools.getAnchors().length;
+      setAnchorCount(count);
+    }
+  }, [mapInstance]);
+
+  // 定期更新锚点数量（当绘制状态时）
+  useEffect(() => {
+    if (isDrawing && mapInstance?.customDrawTools) {
+      const interval = setInterval(updateAnchorCount, 500);
+      return () => clearInterval(interval);
+    }
+  }, [isDrawing, mapInstance, updateAnchorCount]);
 
   // 预设颜色
   const presetColors = [
@@ -134,7 +152,6 @@ const FenceToolbar = ({
   // 初始化表单数据
   useEffect(() => {
     if (mode === 'edit' && fence) {
-      console.log('FenceToolbar: 编辑模式，加载围栏数据:', fence);
       setFormData({
         fence_name: fence.fence_name || '',
         fence_type: fence.fence_type || 'polygon',
@@ -149,11 +166,8 @@ const FenceToolbar = ({
       
       if (fence.geometry) {
         setGeometry(fence.geometry);
-        console.log('FenceToolbar: 设置围栏几何:', fence.geometry);
       }
     } else {
-      // 重置为默认值
-      console.log('FenceToolbar: 创建模式，重置表单数据');
       setFormData({
         fence_name: '',
         fence_type: 'polygon',
@@ -176,78 +190,96 @@ const FenceToolbar = ({
   // 开始绘制
   const startDrawing = useCallback(() => {
     if (!mapInstance) {
-      console.error('FenceToolbar: 地图实例不可用');
       return;
     }
 
-    console.log(`FenceToolbar: 开始${drawingMode === 'polygon' ? '多边形' : '矩形'}绘制`);
     setIsDrawing(true);
+    setToolbarCollapsed(true);
+    setAnchorCount(0); // 重置锚点计数
     
+    // 通知MapViewer更新绘制状态
     if (onDrawingStateChange) {
       onDrawingStateChange(true);
     }
-
-    // 使用自定义绘制工具
-    if (mapInstance.customDrawTools) {
-      // 设置绘制模式
-      mapInstance.customDrawTools.setDrawingMode(drawingMode);
-      // 开始绘制
-      mapInstance.customDrawTools.startDrawing(drawingMode);
-      console.log('FenceToolbar: 已调用CustomDrawTools的绘制方法');
-    } else {
-      console.error('FenceToolbar: CustomDrawTools未加载，请检查CustomDrawTools组件是否正确初始化');
-      console.log('FenceToolbar: 当前地图实例:', mapInstance);
-      console.log('FenceToolbar: 地图实例上的customDrawTools:', mapInstance.customDrawTools);
-      setError(t('fenceToolbar.drawingToolsNotReady'));
-    }
-  }, [mapInstance, drawingMode, onDrawingStateChange, t]);
-
-  // 停止绘制
-  const stopDrawing = useCallback(() => {
-    console.log('FenceToolbar: 停止绘制');
-    setIsDrawing(false);
     
-    if (onDrawingStateChange) {
-      onDrawingStateChange(false);
-    }
-
-    if (mapInstance && mapInstance.customDrawTools) {
-      mapInstance.customDrawTools.stopDrawing();
-      console.log('FenceToolbar: 已调用CustomDrawTools的停止方法');
+    // 启动绘制工具
+    if (mapInstance.customDrawTools) {
+      try {
+        mapInstance.customDrawTools.startDrawing();
+      } catch (error) {
+        console.error('启动绘制工具失败:', error);
+      }
     }
   }, [mapInstance, onDrawingStateChange]);
 
-  // 绘制完成回调 - 从CustomDrawTools接收事件
+  // 停止绘制
+  const stopDrawing = useCallback(() => {
+    setIsDrawing(false);
+    setToolbarCollapsed(false);
+    
+    // 通知MapViewer更新绘制状态
+    if (onDrawingStateChange) {
+      onDrawingStateChange(false);
+    }
+    
+    // 停止绘制工具
+    if (mapInstance?.customDrawTools) {
+      try {
+        mapInstance.customDrawTools.stopDrawing();
+      } catch (error) {
+        console.error('停止绘制工具失败:', error);
+      }
+    }
+  }, [mapInstance, onDrawingStateChange]);
+
+  // 完成绘制
+  const finishDrawing = useCallback(() => {
+    if (mapInstance?.customDrawTools) {
+      try {
+        // 获取当前锚点数量
+        const anchors = mapInstance.customDrawTools.getAnchors();
+        if (anchors.length >= 3) {
+          // 手动触发完成绘制
+          const geometry = mapInstance.customDrawTools.generateGeometry();
+          
+          if (geometry) {
+            setGeometry(geometry);
+            stopDrawing();
+          } else {
+            alert('生成几何数据失败，请重试');
+          }
+        } else {
+          alert('至少需要3个锚点才能创建围栏');
+        }
+      } catch (error) {
+        console.error('完成绘制失败:', error);
+        alert('完成绘制失败: ' + error.message);
+      }
+    } else {
+      alert('绘制工具尚未初始化，请稍后重试');
+    }
+  }, [mapInstance, stopDrawing]);
+
+  // 绘制完成处理
   const handleCustomDrawComplete = useCallback((event) => {
-    console.log('FenceToolbar: 接收到绘制完成事件:', event);
-    
-    setGeometry(event.geometry);
-    
-    // 图层已经在CustomDrawTools中添加到drawLayerRef.current了
-    // 这里只需要更新几何数据
-    console.log('FenceToolbar: 围栏绘制完成，几何数据已设置');
+    if (event && event.geometry) {
+      setGeometry(event.geometry);
+    }
     
     // 自动停止绘制
     stopDrawing();
   }, [stopDrawing]);
-
-
-
-
 
   // 初始化自定义绘制图层和回调注册
   useEffect(() => {
     if (!visible || !mapInstance) {
       return;
     }
-
-    console.log('FenceToolbar: 初始化自定义绘制图层');
     
     // 创建绘制图层
     if (!drawLayerRef.current) {
       drawLayerRef.current = new window.L.FeatureGroup();
       mapInstance.addLayer(drawLayerRef.current);
-      console.log('FenceToolbar: 绘制图层已创建');
     }
 
     // 注册绘制完成回调到地图实例
@@ -255,13 +287,11 @@ const FenceToolbar = ({
       mapInstance.fenceToolbar = {};
     }
     mapInstance.fenceToolbar.handleDrawComplete = handleCustomDrawComplete;
-    console.log('FenceToolbar: 绘制完成回调已注册到地图实例');
 
     isInitializedRef.current = true;
 
     return () => {
       if (!visible && drawLayerRef.current && mapInstance) {
-        console.log('FenceToolbar: 清理绘制图层和回调');
         try {
           mapInstance.removeLayer(drawLayerRef.current);
           drawLayerRef.current = null;
@@ -271,7 +301,7 @@ const FenceToolbar = ({
             delete mapInstance.fenceToolbar.handleDrawComplete;
           }
         } catch (error) {
-          console.error('FenceToolbar: 清理失败:', error);
+          console.error('清理失败:', error);
         }
         isInitializedRef.current = false;
       }
@@ -282,8 +312,6 @@ const FenceToolbar = ({
   useEffect(() => {
     if (mode === 'edit' && fence && fence.geometry && drawLayerRef.current && mapInstance && window.L) {
       try {
-        console.log('FenceToolbar: 在地图上显示现有围栏几何');
-        
         // 清除现有图层
         drawLayerRef.current.clearLayers();
         
@@ -304,10 +332,8 @@ const FenceToolbar = ({
         if (bounds.isValid()) {
           mapInstance.fitBounds(bounds, { padding: [20, 20] });
         }
-        
-        console.log('FenceToolbar: 现有围栏几何已显示在地图上');
       } catch (error) {
-        console.error('FenceToolbar: 显示现有围栏几何失败:', error);
+        console.error('显示现有围栏几何失败:', error);
       }
     }
   }, [mode, fence, mapInstance]);
@@ -337,14 +363,14 @@ const FenceToolbar = ({
       errors.fence_name = t('fenceToolbar.fenceNameRequired');
     }
 
-    // 几何验证
-    if (!geometry) {
+    // 几何验证 - 编辑模式下如果有围栏数据就不需要验证
+    if (!geometry && !(mode === 'edit' && fence && fence.geometry)) {
       errors.geometry = t('fenceToolbar.drawFenceOnMap');
     }
 
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
-  }, [formData, geometry, t]);
+  }, [formData, geometry, mode, fence, t]);
 
   // 保存围栏
   const handleSave = useCallback(async () => {
@@ -356,20 +382,21 @@ const FenceToolbar = ({
       setLoading(true);
       setError(null);
 
+      // 使用当前几何数据或编辑模式下的原始几何数据
+      const geometryData = geometry || (mode === 'edit' && fence ? fence.geometry : null);
+
       const submitData = {
         ...formData,
-        fence_geometry: geometry
+        fence_geometry: geometryData,
+        // 保存锚点数据以便后续编辑
+        fence_anchors: formData.fence_anchors || (mode === 'edit' && fence ? fence.anchors : null)
       };
-
-      console.log('FenceToolbar: 提交围栏数据:', submitData);
 
       let result;
       if (mode === 'create') {
         result = await createFence(apiBaseUrl, submitData);
-        console.log('FenceToolbar: 围栏创建成功:', result);
       } else {
         result = await updateFence(apiBaseUrl, fence.id, submitData);
-        console.log('FenceToolbar: 围栏更新成功:', result);
       }
 
       if (onSuccess) {
@@ -378,48 +405,44 @@ const FenceToolbar = ({
 
       handleClose();
     } catch (error) {
-      console.error(`FenceToolbar: ${mode === 'create' ? '创建' : '更新'}围栏失败:`, error);
+      console.error(`${mode === 'create' ? '创建' : '更新'}围栏失败:`, error);
       setError(error.message);
     } finally {
       setLoading(false);
     }
   }, [formData, geometry, mode, fence, apiBaseUrl, onSuccess, validateForm]);
 
-  // 取消操作
+  // 关闭工具栏
   const handleClose = useCallback(() => {
-    console.log('FenceToolbar: 取消操作 - 清理状态');
-    
-    // 停止任何正在进行的绘制
+    // 如果正在绘制，先停止绘制
     if (isDrawing) {
       stopDrawing();
     }
     
-    // 清理状态
-    isInitializedRef.current = false;
-    setGeometry(null);
-    setError(null);
-    setValidationErrors({});
-    setIsDrawing(false);
-    
     // 清理绘制图层
     if (drawLayerRef.current && mapInstance) {
-      try {
-        mapInstance.removeLayer(drawLayerRef.current);
-        drawLayerRef.current = null;
-      } catch (error) {
-        console.error('FenceToolbar: 清理绘制图层失败:', error);
+      mapInstance.removeLayer(drawLayerRef.current);
+      drawLayerRef.current = null;
+    }
+    
+    // 重置状态
+    setGeometry(null);
+    setFormData({
+      fence_name: '',
+      fence_type: 'restricted',
+      description: '',
+      priority: 'normal',
+      rules: {
+        restriction_type: 'no_entry',
+        applies_to: 'all'
       }
-    }
+    });
     
-    // 清理回调注册
-    if (mapInstance && mapInstance.fenceToolbar) {
-      delete mapInstance.fenceToolbar.handleDrawComplete;
-    }
-    
+    // 调用关闭回调
     if (onClose) {
       onClose();
     }
-  }, [mapInstance, onClose, isDrawing, stopDrawing]);
+  }, [isDrawing, stopDrawing, mapInstance, onClose]);
 
   // 清除当前绘制
   const handleClearDrawing = useCallback(() => {
@@ -433,21 +456,63 @@ const FenceToolbar = ({
     return null;
   }
 
+  // 如果工具栏折叠，只显示一个小的控制按钮
+  if (toolbarCollapsed) {
+    return (
+      <Paper
+        elevation={6}
+        sx={{
+          position: 'fixed',
+          top: 20,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 10002,
+          p: 1,
+          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+          backdropFilter: 'blur(5px)'
+        }}
+        data-testid="fence-toolbar-collapsed"
+      >
+        <Box display="flex" alignItems="center" gap={1}>
+          <Typography variant="caption" color="primary">
+            🖊️ {t('fenceToolbar.drawingInProgress')}
+          </Typography>
+          <Button
+            size="small"
+            variant="contained"
+            color="warning"
+            onClick={stopDrawing}
+          >
+            {t('fenceToolbar.stopDrawing')}
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={handleClose}
+          >
+            {t('fenceToolbar.cancel')}
+          </Button>
+        </Box>
+      </Paper>
+    );
+  }
+
   return (
     <Paper
       elevation={6}
       sx={{
-        position: 'absolute',
-        top: 10,
-        left: 10,
-        right: 10,
-        zIndex: 1000,
-        p: 2,
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-        backdropFilter: 'blur(5px)'
+        position: 'fixed',
+        top: 20,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: '90%',
+        maxWidth: '800px',
+        minHeight: '400px',
+        zIndex: 10002,
+        p: 3,
+        backgroundColor: 'rgba(255, 255, 255, 0.98)',
+        backdropFilter: 'blur(10px)'
       }}
-      data-testid="fence-toolbar"
-      data-drawing-toolbar="true"
     >
       {/* 工具栏标题 */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
@@ -458,47 +523,16 @@ const FenceToolbar = ({
           </Typography>
           {isDrawing && <Chip size="small" label={t('fenceToolbar.drawing')} color="primary" />}
           {geometry && <Chip size="small" label={t('fenceToolbar.drawn')} color="success" />}
-          {mapInstance?.customDrawTools && <Chip size="small" label={t('fenceToolbar.toolReady')} color="info" />}
-          {!mapInstance?.customDrawTools && visible && <Chip size="small" label={t('fenceToolbar.toolLoading')} color="warning" />}
         </Box>
-        <Box display="flex" alignItems="center" gap={1}>
-          <Typography variant="caption" color="text.secondary">
-            {t('fenceToolbar.drawingToolsLocation')}
-          </Typography>
-          <IconButton onClick={handleClose} size="small">
-            <Close />
-          </IconButton>
-        </Box>
+        <IconButton onClick={handleClose} size="small">
+          <Close />
+        </IconButton>
       </Box>
 
       {/* 错误提示 */}
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
-        </Alert>
-      )}
-
-      {/* 开发调试面板 */}
-      {process.env.NODE_ENV === 'development' && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          <Typography variant="caption" component="div">
-            🔧 {t('fenceToolbar.developmentDebugInfo')}:
-          </Typography>
-          <Typography variant="caption" display="block">
-            • {t('fenceToolbar.leafletLibrary')}: {window.L ? `✅ ${t('fenceToolbar.loaded')}` : `❌ ${t('fenceToolbar.notLoaded')}`}
-          </Typography>
-          <Typography variant="caption" display="block">
-            • {t('fenceToolbar.customDrawTools')}: {mapInstance?.customDrawTools ? `✅ ${t('fenceToolbar.loaded')}` : `❌ ${t('fenceToolbar.notLoaded')}`}
-          </Typography>
-          <Typography variant="caption" display="block">
-            • {t('fenceToolbar.drawingLayer')}: {drawLayerRef.current ? `✅ ${t('fenceToolbar.created')}` : `⏳ ${t('fenceToolbar.notCreated')}`}
-          </Typography>
-          <Typography variant="caption" display="block">
-            • {t('fenceToolbar.drawingMode')}: {drawingMode}
-          </Typography>
-          <Typography variant="caption" display="block">
-            • {t('fenceToolbar.drawingStatus')}: {isDrawing ? `🖊️ ${t('fenceToolbar.drawingActive')}` : `⏹️ ${t('fenceToolbar.drawingInactive')}`}
-          </Typography>
         </Alert>
       )}
 
@@ -655,45 +689,62 @@ const FenceToolbar = ({
                     startIcon={<Edit />}
                     fullWidth
                   >
-                    {t('fenceToolbar.startDrawing')}
+                    {mode === 'edit' ? t('fenceToolbar.startEditing') : t('fenceToolbar.startDrawing')}
                   </Button>
                 ) : (
-                  <Button
-                    variant="contained"
-                    color="warning"
-                    onClick={stopDrawing}
-                    fullWidth
-                  >
-                    {t('fenceToolbar.stopDrawing')}
-                  </Button>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      onClick={finishDrawing}
+                      sx={{ flex: 1 }}
+                      startIcon={<Save />}
+                    >
+                      完成绘制
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      color="warning"
+                      onClick={stopDrawing}
+                      sx={{ flex: 1 }}
+                    >
+                      取消绘制
+                    </Button>
+                  </Box>
                 )}
               </Grid>
 
               <Grid item xs={12}>
-                {geometry ? (
+                {geometry || (mode === 'edit' && fence && fence.geometry) ? (
                   <Alert severity="success" sx={{ mb: 1 }}>
-                    ✅ {t('fenceToolbar.fenceDrawn')}
+                    ✅ {mode === 'edit' ? t('fenceToolbar.fenceEdited') : t('fenceToolbar.fenceDrawn')}
                   </Alert>
                 ) : isDrawing ? (
                   <Alert severity="warning" sx={{ mb: 1 }}>
-                    🖊️ {t('fenceToolbar.drawingInProgress')}
+                    🖊️ {mode === 'edit' ? t('fenceToolbar.editingInProgress') : t('fenceToolbar.drawingInProgress')}
+                    <Chip 
+                      size="small" 
+                      label={`${anchorCount} 个锚点`}
+                      color={anchorCount >= 3 ? "success" : "default"}
+                      sx={{ ml: 1 }}
+                    />
                     <Box sx={{ mt: 1 }}>
-                      <Typography variant="caption" display="block">
-                        {drawingMode === 'polygon' 
-                          ? `📍 ${t('fenceToolbar.polygonDrawingTip')}` 
-                          : `🖱️ ${t('fenceToolbar.rectangleDrawingTip')}`}
+                      <Typography variant="caption" display="block" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                        📍 在地图上点击添加锚点
                       </Typography>
-                      <Typography variant="caption" display="block" sx={{ color: 'info.main', fontWeight: 'bold' }}>
-                        💡 {t('fenceToolbar.mapInteractionTip')}
+                      <Typography variant="caption" display="block" sx={{ color: 'info.main' }}>
+                        ✅ 点击"完成绘制"按钮或右键完成 (至少需要3个锚点)
                       </Typography>
                       <Typography variant="caption" display="block" sx={{ color: 'success.main' }}>
-                        🎯 {t('fenceToolbar.editableFenceTip')}
+                        ✨ 双击锚点可切换为曲线控制点
                       </Typography>
                     </Box>
                   </Alert>
                 ) : (
                   <Alert severity="info" sx={{ mb: 1 }}>
-                    {validationErrors.geometry || `🎯 ${t('fenceToolbar.clickStartDrawing')}`}
+                    {validationErrors.geometry || (mode === 'edit' 
+                      ? `🎯 ${t('fenceToolbar.clickStartEditing')}` 
+                      : `🎯 ${t('fenceToolbar.clickStartDrawing')}`)}
                   </Alert>
                 )}
               </Grid>
@@ -702,11 +753,11 @@ const FenceToolbar = ({
                 <ButtonGroup size="small" fullWidth>
                   <Button
                     onClick={handleClearDrawing}
-                    disabled={!geometry}
+                    disabled={!geometry && !(mode === 'edit' && fence && fence.geometry)}
                     startIcon={<Delete />}
                     color="warning"
                   >
-                    {t('fenceToolbar.clearDrawing')}
+                    {mode === 'edit' ? t('fenceToolbar.resetFence') : t('fenceToolbar.clearDrawing')}
                   </Button>
                 </ButtonGroup>
               </Grid>
@@ -728,7 +779,7 @@ const FenceToolbar = ({
             <Button
               variant="contained"
               onClick={handleSave}
-              disabled={loading || !geometry || !formData.fence_name.trim()}
+              disabled={loading || (!geometry && !(mode === 'edit' && fence && fence.geometry)) || !formData.fence_name.trim()}
               startIcon={loading ? <CircularProgress size={16} /> : <Save />}
             >
               {mode === 'create' ? t('fenceToolbar.createFenceAction') : t('fenceToolbar.updateFenceAction')}

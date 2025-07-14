@@ -385,18 +385,18 @@ const Sidebar = ({
                 <ListItem key={category}>
                   <ListItemText
                     primary={category}
-                    secondary={
-                      <Fragment>
-                        <Typography variant="caption" display="block">
+                                            secondary={
+                          <Fragment>
+                            <Typography variant="caption" display="block">
                           {t('sidebar.more')}: {stats.table_count} | {t('sidebar.records')}: {stats.total_count.toLocaleString()}
-                        </Typography>
-                        {stats.tables.filter(t => t.count > 0).map(table => (
-                          <Typography key={table.table} variant="caption" display="block" color="text.secondary">
-                            • {table.table}: {table.count.toLocaleString()} ({table.size})
-                          </Typography>
-                        ))}
-                      </Fragment>
-                    }
+                            </Typography>
+                            {stats.tables.filter(t => t.count > 0).map(table => (
+                              <Typography key={table.table} variant="caption" display="block" color="text.secondary">
+                                • {table.table}: {table.count.toLocaleString()} ({table.size})
+                              </Typography>
+                            ))}
+                          </Fragment>
+                        }
                   />
                 </ListItem>
               ))}

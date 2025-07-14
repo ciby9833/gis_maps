@@ -26,7 +26,7 @@ import { MyLocation, Layers, Search, LocationOn } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import 'leaflet/dist/leaflet.css';
 
-// 围栏图层样式 - 确保在最上层
+// 围栏图层样式 - 确保绘制工具能在其上方
 const fenceLayerStyle = `
   .fence-layer {
     z-index: 1000 !important;
@@ -34,6 +34,24 @@ const fenceLayerStyle = `
   }
   .leaflet-interactive.fence-layer {
     z-index: 1000 !important;
+  }
+  .drawing-overlay {
+    z-index: 10000 !important;
+    pointer-events: none !important;
+  }
+  .drawing-overlay.active {
+    pointer-events: auto !important;
+  }
+  /* 锚点和控制柄层级 */
+  .leaflet-tooltip-pane {
+    z-index: 10001 !important;
+  }
+  .leaflet-tooltip-pane .leaflet-interactive {
+    z-index: 10001 !important;
+  }
+  /* 围栏工具栏层级 */
+  [data-drawing-toolbar="true"] {
+    z-index: 10002 !important;
   }
 `;
 
@@ -264,14 +282,23 @@ const validateAndFilterFeatures = (features, layerName) => {
     }
   });
   
-  if (validFeatures.length !== features.length) {
-    console.log(`${layerName}: Added ${validFeatures.length} / ${features.length} features (filtered out ${features.length - validFeatures.length} invalid features)`);
-  }
-  
   return validFeatures;
 };
 
-const MapViewer = ({ apiStatus, selectedCategory, layersVisible, onLayerToggle, dataTypeFilters, configLoaded }) => {
+const MapViewer = ({ 
+  apiStatus, 
+  selectedCategory, 
+  layersVisible, 
+  onLayerToggle, 
+  dataTypeFilters, 
+  configLoaded,
+  // 新增的可选props
+  onLayerDataChange, 
+  onBoundsChange, 
+  onLocationUpdate, 
+  onStatsUpdate,
+  onFenceSuccess 
+}) => {
   const { t } = useTranslation();
   
   // 基础状态
@@ -304,7 +331,7 @@ const MapViewer = ({ apiStatus, selectedCategory, layersVisible, onLayerToggle, 
     places: null,
     fences: null
   });
-  
+
   // 图层加载状态
   const [layerLoading, setLayerLoading] = useState({
     buildings: false,
@@ -327,7 +354,7 @@ const MapViewer = ({ apiStatus, selectedCategory, layersVisible, onLayerToggle, 
   const [fenceToolbarMode, setFenceToolbarMode] = useState('create');
   const [currentFence, setCurrentFence] = useState(null);
   const [fenceDrawing, setFenceDrawing] = useState(false);
-  
+
   // 其他功能状态
   const [validateBuildings, setValidateBuildings] = useState(() => 
     getStoredBoolean(MAPVIEWER_STORAGE_KEYS.VALIDATE_BUILDINGS, false)
@@ -416,23 +443,7 @@ const MapViewer = ({ apiStatus, selectedCategory, layersVisible, onLayerToggle, 
       // 检查加载策略 - 使用后端图层名称
       const strategy = await configLoader.getLayerStrategy(backendLayerName, zoom);
       if (!strategy.load_data) {
-        // 🔥 优化：提供更详细的跳过原因
-        const reason = strategy.reason || 'unknown';
-        const minZoom = strategy.min_zoom;
-        const maxZoom = strategy.max_zoom;
         
-        let reasonMessage = '';
-        if (reason === 'zoom_too_low') {
-          reasonMessage = `zoom level ${zoom} < required ${minZoom}`;
-        } else if (reason === 'zoom_too_high') {
-          reasonMessage = `zoom level ${zoom} > maximum ${maxZoom}`;
-        } else if (reason === 'layer_not_configured') {
-          reasonMessage = 'layer not configured in backend';
-        } else {
-          reasonMessage = reason;
-        }
-        
-        console.log(`⚠️  Skipping ${layerName} layer: ${reasonMessage}`);
         
         // 清空图层数据
         setLayerData(prev => ({ ...prev, [layerName]: null }));
@@ -449,15 +460,13 @@ const MapViewer = ({ apiStatus, selectedCategory, layersVisible, onLayerToggle, 
       // 特殊处理
       if (layerName === 'buildings' && selectedCategory) {
         url += `&category=${selectedCategory}`;
-      }
+          }
       if (layerName === 'buildings' && validateBuildings) {
         url += `&validate_land=true`;
       }
       if (layerName === 'fences') {
         url += `&status=active`;
       }
-      
-      console.log(`🔄 Loading ${layerName} data (zoom: ${zoom}, strategy: ${strategy.reason}):`, url);
       
       const response = await fetch(url);
       if (!response.ok) {
@@ -510,7 +519,7 @@ const MapViewer = ({ apiStatus, selectedCategory, layersVisible, onLayerToggle, 
             }
           }));
         }
-      } else {
+          } else {
         // 其他图层数据处理
         if (data.type === 'FeatureCollection' && data.features) {
           processedData = data;
@@ -526,28 +535,9 @@ const MapViewer = ({ apiStatus, selectedCategory, layersVisible, onLayerToggle, 
         [layerName]: processedData
       }));
       
-      // 🔥 优化：提供更详细的加载成功信息
-      const featureCount = Array.isArray(processedData) ? processedData.length : 
-                          (processedData && processedData.features ? processedData.features.length : 0);
-      
-      console.log(`✅ ${layerName} data loaded successfully:`, {
-        zoom,
-        strategy: strategy.reason,
-        features: featureCount,
-        maxFeatures: strategy.max_features,
-        cacheHit: data.performance?.cache_hit || false
-      });
-      
     } catch (error) {
-      console.error(`❌ Error loading ${layerName} (zoom: ${zoom}):`, error);
+      console.error(`Error loading ${layerName} (zoom: ${zoom}):`, error);
       setLayerData(prev => ({ ...prev, [layerName]: null }));
-      
-      // 🔥 优化：显示用户友好的错误信息
-      if (error.message.includes('404')) {
-        console.warn(`⚠️  ${layerName} API endpoint not found - check backend routes`);
-      } else if (error.message.includes('500')) {
-        console.error(`🔥 ${layerName} server error - check backend logs`);
-      }
     } finally {
       setLayerLoading(prev => ({ ...prev, [layerName]: false }));
     }
@@ -557,8 +547,6 @@ const MapViewer = ({ apiStatus, selectedCategory, layersVisible, onLayerToggle, 
   const debouncedLoadData = useCallback(
     debounce(async (bounds, zoom) => {
       if (!configLoaded || !bounds) return;
-      
-      console.log('Loading data for bounds:', bounds, 'zoom:', zoom);
       
       // 根据图层可见性和后端策略加载数据
       const layersToLoad = [];
@@ -581,7 +569,6 @@ const MapViewer = ({ apiStatus, selectedCategory, layersVisible, onLayerToggle, 
   // 当配置加载完成时重新加载数据
   useEffect(() => {
     if (configLoaded && currentBounds && currentZoom) {
-      console.log('Config loaded, triggering data reload');
       debouncedLoadData(currentBounds, currentZoom);
     }
   }, [configLoaded, currentBounds, currentZoom, debouncedLoadData]);
@@ -638,13 +625,12 @@ const MapViewer = ({ apiStatus, selectedCategory, layersVisible, onLayerToggle, 
           mapInstance.setView([location.lat, location.lng], 16);
         }
         
-        console.log(`Search successful: ${location.lat}, ${location.lng}`);
         
       } else if (data.type === 'reverse_geocode') {
         const location = { lat: data.coordinates.lat, lng: data.coordinates.lng };
         setSelectedLocation(location);
         
-        // 🔥 修复：反向地理编码后自动缩放到16级
+        // 反向地理编码后自动缩放到16级
         if (mapInstance) {
           mapInstance.setView([location.lat, location.lng], 16);
         }
@@ -687,13 +673,13 @@ const MapViewer = ({ apiStatus, selectedCategory, layersVisible, onLayerToggle, 
         const roads = [];
         
         const poiTypes = new Set([
-          'restaurant', 'cafe', 'bar', 'pub', 'fast_food', 'food_court',
+          'restaurant', 'cafe', 'bar', 'pub', 'fast_food', 'food_court', 
           'hospital', 'clinic', 'pharmacy', 'school', 'university', 'college',
           'bank', 'atm', 'post_office', 'police', 'fire_station', 'government',
           'hotel', 'motel', 'guest_house', 'shop', 'mall', 'supermarket', 'market',
-          'gas_station', 'parking', 'bus_station', 'subway_station', 'train_station',
+          'gas_station', 'parking', 'bus_station', 'subway_station', 'train_station', 
           'airport', 'museum', 'library', 'theatre', 'cinema', 'park', 'playground',
-          'stadium', 'sports_centre', 'swimming_pool', 'place_of_worship', 'mosque',
+          'stadium', 'sports_centre', 'swimming_pool', 'place_of_worship', 'mosque', 
           'church', 'temple', 'commercial', 'office', 'retail', 'services'
         ]);
         
@@ -779,15 +765,14 @@ const getUserLocation = useCallback(
         const location = { lat: latitude, lng: longitude };
         setUserLocation(location);
         setSelectedLocation(location);
-
+        
         // 🔥 修复: 如果有传map参数，用它；否则用state
         const map = customMapInstance || mapInstance;
         if (map) {
           map.setView([latitude, longitude], 16);
         }
-
+        
         setLocationLoading(false);
-        console.log('Location obtained:', { latitude, longitude });
       },
       (error) => {
         console.warn('Get location failed:', error.message);
@@ -804,21 +789,20 @@ const getUserLocation = useCallback(
 );
 
 // 地图准备就绪回调 - 只在首次加载时获取用户位置
-const handleMapReady = useCallback((map) => {
-  console.log('Map is ready');
-  setMapInstance(map);
-
-  // 创建围栏图层
-  if (!map._fenceDrawLayer) {
-    map._fenceDrawLayer = new window.L.FeatureGroup().addTo(map);
-  }
-
-  // ✅ 仅在首次加载时自动获取定位（遵循Google地图的做法）
-  // 检查是否已经有用户位置，如果没有才自动获取
-  if (!userLocation) {
-    getUserLocation(map);
-  }
-}, [getUserLocation, userLocation]);
+  const handleMapReady = useCallback((map) => {
+    setMapInstance(map);
+    
+    // 创建围栏图层
+    if (!map._fenceDrawLayer) {
+      map._fenceDrawLayer = new window.L.FeatureGroup().addTo(map);
+    }
+    
+    // 仅在首次加载时自动获取定位（遵循Google地图的做法）
+    // 检查是否已经有用户位置，如果没有才自动获取
+    if (!userLocation) {
+      getUserLocation(map);
+    }
+  }, [getUserLocation, userLocation]);
 
 // 边界变化处理
 const handleBoundsChange = useCallback(
@@ -830,17 +814,16 @@ const handleBoundsChange = useCallback(
   [debouncedLoadData]
 );
 
-const handleZoomChange = useCallback((zoom) => {
-  setCurrentZoom(zoom);
-}, []);
+  const handleZoomChange = useCallback((zoom) => {
+    setCurrentZoom(zoom);
+  }, []);
 
-// 🔥 保留根据category刷新 - 不触发自动定位
-useEffect(() => {
-  if (currentBounds && currentZoom) {
-    console.log('Category or validation changed, reload data');
-    debouncedLoadData(currentBounds, currentZoom);
-  }
-}, [selectedCategory, validateBuildings, currentBounds, currentZoom, debouncedLoadData]);
+// 根据category刷新 - 不触发自动定位
+  useEffect(() => {
+    if (currentBounds && currentZoom) {
+      debouncedLoadData(currentBounds, currentZoom);
+    }
+  }, [selectedCategory, validateBuildings, currentBounds, currentZoom, debouncedLoadData]);
 
   // 样式函数
   const getGeoJSONStyle = () => ({
@@ -850,32 +833,32 @@ useEffect(() => {
     color: '#1976d2',
     fillOpacity: 0.3
   });
-
+  
   const getLandPolygonStyleEnhanced = () => {
     switch (landDisplayMode) {
       case 'clear':
         return {
           fillColor: '#E6FFE6',
-          weight: 1,
-          opacity: 0.8,
+          weight: 1,                
+          opacity: 0.8,             
           color: '#32CD32',
-          fillOpacity: 0.4
+          fillOpacity: 0.4          
         };
       case 'coastline':
         return {
-          fillColor: 'transparent',
-          weight: 2,
-          opacity: 1,
+          fillColor: 'transparent', 
+          weight: 2,                
+          opacity: 1,               
           color: '#1E90FF',
-          fillOpacity: 0
+          fillOpacity: 0            
         };
       default:
         return {
           fillColor: '#F0F8FF',
-          weight: 0.5,
-          opacity: 0.6,
+          weight: 0.5,              
+          opacity: 0.6,             
           color: '#1E90FF',
-          fillOpacity: 0.3
+          fillOpacity: 0.3          
         };
     }
   };
@@ -1173,7 +1156,7 @@ useEffect(() => {
           color: '#1b5e20'
         });
       });
-      
+
       layer.on('mouseout', function() {
         this.setStyle(getLandPolygonStyleEnhanced());
       });
@@ -1263,15 +1246,13 @@ useEffect(() => {
     setFenceToolbarVisible(true);
   }, []);
 
-  const handleFenceToolbarClose = useCallback(() => {
+  const handleCloseFenceToolbar = useCallback(() => {
     setFenceToolbarVisible(false);
-    setCurrentFence(null);
     setFenceDrawing(false);
+    setCurrentFence(null);
   }, []);
 
   const handleFenceToolbarSuccess = useCallback((fence) => {
-    console.log('Fence operation successful:', fence);
-    
     if (currentBounds) {
       loadLayerData('fences', currentBounds, currentZoom);
     }
@@ -1324,14 +1305,14 @@ useEffect(() => {
     
     if (currentBounds) {
       debouncedLoadData(currentBounds, currentZoom);
-    }
+        }
   }, [currentBounds, currentZoom, debouncedLoadData]);
 
   // 手动定位到用户位置
   const handleGoToLocation = useCallback(() => {
     if (userLocation && mapInstance) {
       mapInstance.setView([userLocation.lat, userLocation.lng], 16);
-    } else {
+        } else {
       getUserLocation();
     }
   }, [userLocation, mapInstance, getUserLocation]);
@@ -1342,6 +1323,21 @@ useEffect(() => {
       mapInstance.setView([selectedLocation.lat, selectedLocation.lng], 16);
     }
   }, [selectedLocation, mapInstance]);
+
+  // CustomDrawTools完成回调
+  const handleCustomDrawComplete = useCallback((event) => {
+    // 直接调用当前活动的FenceToolbar的处理函数
+    if (mapInstance?.fenceToolbar?.handleDrawComplete) {
+      mapInstance.fenceToolbar.handleDrawComplete(event);
+    }
+  }, [mapInstance]);
+
+  // CustomDrawTools引用回调
+  const handleCustomDrawToolsRef = useCallback((ref) => {
+    if (mapInstance && ref) {
+      mapInstance.customDrawTools = ref;
+    }
+  }, [mapInstance]);
 
   if (!apiStatus) {
     return (
@@ -1360,7 +1356,7 @@ useEffect(() => {
         fence={currentFence}
         mapInstance={mapInstance}
         apiBaseUrl={API_BASE_URL}
-        onClose={handleFenceToolbarClose}
+        onClose={handleCloseFenceToolbar}
         onSuccess={handleFenceToolbarSuccess}
         onDrawingStateChange={handleDrawingStateChange}
       />
@@ -1383,26 +1379,23 @@ useEffect(() => {
           onMapReady={handleMapReady}
         />
         
-        {/* 自定义绘制工具 */}
+        {/* 改进的CustomDrawTools组件 */}
         <CustomDrawTools 
-          onDrawComplete={(event) => {
-            if (mapInstance && mapInstance.fenceToolbar && mapInstance.fenceToolbar.handleDrawComplete) {
-              mapInstance.fenceToolbar.handleDrawComplete(event);
-            }
-          }}
-          onDrawStart={() => setFenceDrawing(true)}
-          onDrawStop={() => setFenceDrawing(false)}
+          isActive={fenceDrawing}
+          onDrawComplete={handleCustomDrawComplete}
+          onRef={handleCustomDrawToolsRef}
           drawingMode="polygon"
           drawLayerGroup={mapInstance?._fenceDrawLayer}
+          editingGeometry={fenceToolbarMode === 'edit' && currentFence ? currentFence.geometry : null}
+          editingAnchors={fenceToolbarMode === 'edit' && currentFence ? currentFence.anchors : null}
           style={{
             color: '#FF0000',
             fillColor: '#FF0000',
             fillOpacity: 0.3,
             weight: 2
           }}
-          isActive={fenceToolbarVisible}
         />
-
+        
         {/* 陆地多边形图层 */}
         {layersVisible.landPolygons && layerData.landPolygons && Array.isArray(layerData.landPolygons.features) && layerData.landPolygons.features.length > 0 && (() => {
           const validFeatures = validateAndFilterFeatures(layerData.landPolygons.features, 'Land Polygons');
@@ -1421,8 +1414,7 @@ useEffect(() => {
                 filter={(feature) => feature && feature.geometry && feature.geometry.type}
                 onEachFeature={onEachLandFeature}
                 eventHandlers={{
-                  error: (e) => console.error('Land polygon GeoJSON render error:', e),
-                  add: (e) => console.log(`Land polygon layer added with ${validFeatures.length} features`)
+                  error: (e) => console.error('Land polygon GeoJSON render error:', e)
                 }}
               />
             );
@@ -1431,7 +1423,7 @@ useEffect(() => {
             return null;
           }
         })()}
-
+        
         {/* 建筑物图层 */}
         {layersVisible.buildings && layerData.buildings && Array.isArray(layerData.buildings.features) && layerData.buildings.features.length > 0 && (() => {
           const validFeatures = validateAndFilterFeatures(layerData.buildings.features, 'Buildings');
@@ -1450,8 +1442,7 @@ useEffect(() => {
                 filter={(feature) => feature && feature.geometry && feature.geometry.type}
                 onEachFeature={onEachFeature}
                 eventHandlers={{
-                  error: (e) => console.error('Building GeoJSON render error:', e),
-                  add: (e) => console.log(`Building layer added with ${validFeatures.length} features`)
+                  error: (e) => console.error('Building GeoJSON render error:', e)
                 }}
               />
             );
@@ -1495,8 +1486,7 @@ useEffect(() => {
                   }
                 }}
                 eventHandlers={{
-                  error: (e) => console.error('Road GeoJSON render error:', e),
-                  add: (e) => console.log(`Road layer added with ${validFeatures.length} features`)
+                  error: (e) => console.error('Road GeoJSON render error:', e)
                 }}
               />
             );
@@ -1538,8 +1528,7 @@ useEffect(() => {
                   }
                 }}
                 eventHandlers={{
-                  error: (e) => console.error('POI GeoJSON render error:', e),
-                  add: (e) => console.log(`POI layer added with ${validFeatures.length} features`)
+                  error: (e) => console.error('POI GeoJSON render error:', e)
                 }}
               />
             );
@@ -1581,8 +1570,7 @@ useEffect(() => {
                   }
                 }}
                 eventHandlers={{
-                  error: (e) => console.error('Natural GeoJSON render error:', e),
-                  add: (e) => console.log(`Natural layer added with ${validFeatures.length} features`)
+                  error: (e) => console.error('Natural GeoJSON render error:', e)
                 }}
               />
             );
@@ -1624,8 +1612,7 @@ useEffect(() => {
                   }
                 }}
                 eventHandlers={{
-                  error: (e) => console.error('Transport GeoJSON render error:', e),
-                  add: (e) => console.log(`Transport layer added with ${validFeatures.length} features`)
+                  error: (e) => console.error('Transport GeoJSON render error:', e)
                 }}
               />
             );
@@ -1668,8 +1655,7 @@ useEffect(() => {
                   }
                 }}
                 eventHandlers={{
-                  error: (e) => console.error('Places GeoJSON render error:', e),
-                  add: (e) => console.log(`Places layer added with ${validFeatures.length} features`)
+                  error: (e) => console.error('Places GeoJSON render error:', e)
                 }}
               />
             );
@@ -1678,7 +1664,7 @@ useEffect(() => {
             return null;
           }
         })()}
-
+        
         {/* 围栏图层 */}
         {fencesVisible && layerData.fences && Array.isArray(layerData.fences) && layerData.fences.length > 0 && (() => {
           const validFeatures = validateAndFilterFeatures(layerData.fences, 'Fences');
@@ -1697,8 +1683,7 @@ useEffect(() => {
                 filter={(feature) => feature && feature.geometry && feature.geometry.type}
                 onEachFeature={onEachFenceFeature}
                 eventHandlers={{
-                  error: (e) => console.error('Fence GeoJSON render error:', e),
-                  add: (e) => console.log(`Fence layer added with ${validFeatures.length} fences`)
+                  error: (e) => console.error('Fence GeoJSON render error:', e)
                 }}
                 pane="overlayPane"
               />
@@ -1708,7 +1693,7 @@ useEffect(() => {
             return null;
           }
         })()}
-
+        
         {/* 定位标记 */}
         {selectedLocation && (
           <Marker position={[selectedLocation.lat, selectedLocation.lng]} icon={createLocationIcon()}>
@@ -1734,7 +1719,7 @@ useEffect(() => {
         )}
 
       </MapContainer>
-
+      
       {/* 加载指示器 */}
       {Object.values(layerLoading).some(loading => loading) && (
         <Box
@@ -1756,34 +1741,34 @@ useEffect(() => {
             top: 10,
             right: 10,
             p: 2,
-            zIndex: 1000,
+            zIndex: 1500, // 比围栏图层高但比绘制工具低
             minWidth: 300
           }}
         >
-          {/* 搜索框 */}
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="subtitle2" gutterBottom>
+        {/* 搜索框 */}
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle2" gutterBottom>
               {t('mapViewer.searchLocation')}
-            </Typography>
+          </Typography>
             <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-              <TextField
-                size="small"
+            <TextField
+              size="small"
                 placeholder={t('mapViewer.searchPlaceholder')}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && searchLocation(searchQuery)}
-                sx={{ flex: 1 }}
-              />
-              <Button
-                size="small"
-                variant="contained"
-                onClick={() => searchLocation(searchQuery)}
-                disabled={searchLoading}
-                startIcon={searchLoading ? <CircularProgress size={16} /> : <Search />}
-              >
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && searchLocation(searchQuery)}
+              sx={{ flex: 1 }}
+            />
+            <Button
+              size="small"
+              variant="contained"
+              onClick={() => searchLocation(searchQuery)}
+              disabled={searchLoading}
+              startIcon={searchLoading ? <CircularProgress size={16} /> : <Search />}
+            >
                 {t('mapViewer.search')}
-              </Button>
-            </Box>
+            </Button>
+          </Box>
             {/* 自动定位控制 */}
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
               <Button
@@ -1809,16 +1794,16 @@ useEffect(() => {
                   {t('mapViewer.goToResult')}
                 </Button>
               )}
-            </Box>
           </Box>
-
+        </Box>
+        
           {/* 显示模式选择 */}
-          {layersVisible.landPolygons && (
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>
+        {layersVisible.landPolygons && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
                 {t('mapViewer.landPolygonDisplayMode')}
-              </Typography>
-                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
               <Button
                 size="small"
                 variant={landDisplayMode === 'subtle' ? "contained" : "outlined"}
@@ -1853,13 +1838,13 @@ useEffect(() => {
                   🌊 {t('mapViewer.coastlineMode')}
               </Button>
             </Box>
-            </Box>
-          )}
-
-          {/* 建筑物验证功能 */}
-          {layersVisible.buildings && (
-            <Box sx={{ mb: 2 }}>
-                          <Button
+          </Box>
+        )}
+        
+        {/* 建筑物验证功能 */}
+        {layersVisible.buildings && (
+          <Box sx={{ mb: 2 }}>
+            <Button
               size="small"
               variant={validateBuildings ? "contained" : "outlined"}
               onClick={() => {
@@ -1875,14 +1860,14 @@ useEffect(() => {
             >
               🔍 {t('mapViewer.buildingLandValidation')} ({validateBuildings ? t('mapViewer.on') : t('mapViewer.off')})
             </Button>
-            </Box>
-          )}
-
+          </Box>
+        )}
+        
           {/* 功能按钮 */}
           <Box sx={{ mb: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Button size="small" variant="outlined" onClick={clearAllCache}>
               {t('mapViewer.clearCache')}
-            </Button>
+          </Button>
             <Button
               size="small"
               variant="outlined"
@@ -1895,80 +1880,80 @@ useEffect(() => {
               startIcon={locationLoading ? <CircularProgress size={16} /> : <MyLocation />}
             >
               {t('mapViewer.myLocation')}
+          </Button>
+        </Box>
+
+        {/* 围栏管理 */}
+        <Box sx={{ mb: 2 }}>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+            <Button 
+              size="small" 
+              variant="contained" 
+              color="secondary" 
+              onClick={handleCreateFence}
+              disabled={fenceToolbarVisible}
+              sx={{ flex: 1 }}
+            >
+                🖊️ {t('mapViewer.createFence')}
+            </Button>
+            <Button 
+              size="small" 
+              variant="outlined" 
+              onClick={() => setShowFenceManager(true)}
+              sx={{ flex: 1 }}
+            >
+                🏠 {t('mapViewer.fenceList')}
             </Button>
           </Box>
-
-          {/* 围栏管理 */}
-          <Box sx={{ mb: 2 }}>
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
-              <Button 
-                size="small" 
-                variant="contained" 
-                color="secondary" 
-                onClick={handleCreateFence}
-                disabled={fenceToolbarVisible}
-                sx={{ flex: 1 }}
-              >
-                🖊️ {t('mapViewer.createFence')}
-              </Button>
-              <Button 
-                size="small" 
-                variant="outlined" 
-                onClick={() => setShowFenceManager(true)}
-                sx={{ flex: 1 }}
-              >
-                🏠 {t('mapViewer.fenceList')}
-              </Button>
-            </Box>
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              <Button
-                size="small"
-                variant={fencesVisible ? "contained" : "outlined"}
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Button
+              size="small"
+              variant={fencesVisible ? "contained" : "outlined"}
                 onClick={() => {
                   const newFencesVisible = !fencesVisible;
                   setFencesVisible(newFencesVisible);
                   saveToStorage(MAPVIEWER_STORAGE_KEYS.FENCES_VISIBLE, newFencesVisible);
                 }}
-                color={fencesVisible ? "success" : "primary"}
-              >
+              color={fencesVisible ? "success" : "primary"}
+            >
                 {fencesVisible ? `🟢 ${t('mapViewer.fenceDisplay')}` : `⚪ ${t('mapViewer.fenceHidden')}`}
-              </Button>
-              {selectedFence && (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => handleEditFence(selectedFence)}
-                  disabled={fenceToolbarVisible}
-                >
+            </Button>
+            {selectedFence && (
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => handleEditFence(selectedFence)}
+                disabled={fenceToolbarVisible}
+              >
                   ✏️ {t('mapViewer.editFence')}
-                </Button>
-              )}
-              {selectedFence && (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => setSelectedFence(null)}
-                >
+              </Button>
+            )}
+            {selectedFence && (
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setSelectedFence(null)}
+              >
                   {t('mapViewer.cancelSelection')}
-                </Button>
-              )}
-            </Box>
-            {fenceToolbarVisible && (
-              <Alert severity="info" sx={{ mt: 1 }}>
-                🛠️ {t('mapViewer.fenceToolbarActive')}
-              </Alert>
+              </Button>
             )}
           </Box>
-
+          {fenceToolbarVisible && (
+            <Alert severity="info" sx={{ mt: 1 }}>
+                🛠️ {t('mapViewer.fenceToolbarActive')}
+            </Alert>
+          )}
+        </Box>
+        
           {/* 数据统计 */}
           <Box sx={{ mb: 1 }}>
             <Typography variant="subtitle2" gutterBottom>
               {t('mapViewer.dataStatistics')}
             </Typography>
-            <Typography variant="body2">
+        <Typography variant="body2">
               {t('mapViewer.totalFeatures')}: {apiStatus?.total_features?.toLocaleString() || 0}
-            </Typography>
-            
+        </Typography>
+        
             {/* 🔥 优化：显示详细的图层加载状态 */}
             {Object.entries(layerData).map(([layerName, data]) => {
               const isVisible = layerName === 'fences' ? fencesVisible : layersVisible[layerName];
@@ -2027,10 +2012,10 @@ useEffect(() => {
                   {layerName === 'fences' && selectedFence && ` ✅${t('mapViewer.selected')}`}
                   {layerName === 'fences' && fenceToolbarVisible && ` 🛠️${t('mapViewer.toolbarActive')}`}
                   {layerName === 'fences' && fenceDrawing && ` 🖊️${t('mapViewer.drawing')}`}
-                </Typography>
+          </Typography>
               );
             })}
-            
+        
             <Typography variant="body2">
               {t('mapViewer.zoomLevel')}: {currentZoom}
               {configLoaded && currentZoom >= 16 && (
@@ -2038,47 +2023,47 @@ useEffect(() => {
                   🚀 {t('mapViewer.highZoomMode')}
                 </span>
               )}
-            </Typography>
+          </Typography>
             
             {/* 🔥 新增：显示缩放级别建议 */}
             {currentZoom < 9 && (
               <Typography variant="body2" sx={{ color: '#ff9800', fontSize: '0.75rem' }}>
                 💡 {t('mapViewer.zoomSuggestion')}: {t('mapViewer.zoomInForMoreLayers')}
-              </Typography>
-            )}
-            
+          </Typography>
+        )}
+        
             {/* 配置加载状态 */}
             <Typography variant="body2" color={configLoaded ? "success.main" : "warning.main"}>
               {configLoaded ? '✅ ' : '⚠️ '}{t('mapViewer.backendConfig')}: {configLoaded ? t('mapViewer.loaded') : t('mapViewer.loading')}
-            </Typography>
-            
+          </Typography>
+        
             {/* 自动定位状态 */}
             <Typography variant="body2" color={autoLocationEnabled ? "success.main" : "info.main"}>
               {autoLocationEnabled ? '✅ ' : '⚪ '}{t('mapViewer.autoLocationStatus')}: {autoLocationEnabled ? t('mapViewer.enabled') : t('mapViewer.disabled')}
-            </Typography>
+        </Typography>
             
-            {userLocation && (
-              <Typography variant="body2" color="success.main">
+        {userLocation && (
+          <Typography variant="body2" color="success.main">
                 📍 {t('mapViewer.locationObtained')}: {userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)}
-              </Typography>
-            )}
+          </Typography>
+        )}
             
-            {selectedCategory && (
-              <Typography variant="body2">
+        {selectedCategory && (
+          <Typography variant="body2">
                 🏷️ {t('mapViewer.filterCategory')}: {selectedCategory}
-              </Typography>
-            )}
+          </Typography>
+        )}
           </Box>
-        </Paper>
+      </Paper>
       )}
-
+      
       {/* 周边信息对话框 */}
       <NearbyInfoDialog 
         open={showNearbyDialog} 
         onClose={() => setShowNearbyDialog(false)}
         nearbyInfo={nearbyInfo}
       />
-
+      
       {/* 位置指示器 */}
       <LocationIndicator 
         selectedLocation={selectedLocation}
@@ -2111,8 +2096,10 @@ useEffect(() => {
         toolbarVisible={fenceToolbarVisible}
       />
 
+
+
     </Box>
   );
 };
 
-export default MapViewer;
+export default MapViewer; 

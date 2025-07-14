@@ -193,7 +193,7 @@ const NearbyInfoDialog = ({ open, onClose, nearbyInfo }) => {
               {(nearbyInfo?.pois_100m || []).length === 0 && (
                 <Typography variant="body2" color="text.secondary">
                   {t('dialogs.nearbyInfo.within100m')} {t('dialogs.nearbyInfo.noData')}
-                </Typography>
+            </Typography>
               )}
             </List>
           </Grid>
