@@ -769,6 +769,7 @@ async def get_pois(
         strategy = get_layer_zoom_strategy('pois', zoom or 1)
     except:
         strategy = {'load_data': True, 'max_features': 5000}
+        
     if zoom is None or zoom < 12:
         return {
             "type": "FeatureCollection", 
