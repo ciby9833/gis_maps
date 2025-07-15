@@ -13,6 +13,7 @@ import logging
 import requests
 import re
 import urllib.parse
+import os
 from typing import Optional, List, Dict, Any, Union
 
 # 动态导入配置，处理可能不存在的配置项
@@ -109,12 +110,12 @@ except ImportError:
     }
     
     GOOGLE_GEOCODING_CONFIG = {
-        'api_key': 'AIzaSyAq2c870DGwgJmwF_gToDvXwBdZIMKu3fM',
+        'api_key': os.getenv('GOOGLE_API_KEY', 'YOUR_GOOGLE_API_KEY_HERE'),
         'base_url': 'https://maps.googleapis.com/maps/api/geocode/json',
-        'language': 'id,en',
-        'region': 'id',
-        'timeout': 5,
-        'max_retries': 3,
+        'language': os.getenv('GOOGLE_LANGUAGE', 'id,en'),
+        'region': os.getenv('GOOGLE_REGION', 'id'),
+        'timeout': int(os.getenv('GOOGLE_TIMEOUT', '5')),
+        'max_retries': int(os.getenv('GOOGLE_MAX_RETRIES', '3')),
         'backoff_factor': 0.3
     }
     
