@@ -7,6 +7,14 @@
 import os
 from zoom_strategy_config import LAYER_ZOOM_STRATEGIES, HIGH_ZOOM_STRATEGY, ZOOM_STRATEGY_DESCRIPTION
 
+# 加载 .env 文件
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # 如果没有安装 python-dotenv，继续使用系统环境变量
+    pass
+
 # 统一的环境变量函数
 def get_env(key: str, default=None, required=False, cast=None):
     """
