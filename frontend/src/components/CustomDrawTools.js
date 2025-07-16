@@ -961,6 +961,11 @@ const CustomDrawTools = ({
       delete map._customDrawHandlers;
     }
 
+    // 恢复其他图层的交互事件
+    if (map.enableLayerEvents) {
+      map.enableLayerEvents();
+    }
+
     // 通知外部停止
     if (onDrawStop) {
       onDrawStop();
@@ -980,6 +985,11 @@ const CustomDrawTools = ({
   const handleStartDrawing = useCallback(() => {
     if (!pathManagerRef.current) {
       return;
+    }
+
+    // 禁用其他图层的交互事件
+    if (map.disableLayerEvents) {
+      map.disableLayerEvents();
     }
 
     // 清理现有路径
@@ -1039,6 +1049,11 @@ const CustomDrawTools = ({
       map.off('click', map._customDrawHandlers.click);
       map.off('contextmenu', map._customDrawHandlers.contextmenu);
       delete map._customDrawHandlers;
+    }
+
+    // 恢复其他图层的交互事件
+    if (map.enableLayerEvents) {
+      map.enableLayerEvents();
     }
 
     // 通知外部
