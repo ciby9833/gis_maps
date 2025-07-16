@@ -567,6 +567,9 @@ systemctl restart gis-service
 
 ---
 
+# 激活虚拟环境
+source venv/bin/activate  # Linux/Mac
+
 # 方式1: 直接启动 (推荐)
 python main.py
 
@@ -575,3 +578,4 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 
 # 方式3: 多进程启动 (生产环境)
 uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+

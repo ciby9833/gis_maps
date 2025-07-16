@@ -612,11 +612,18 @@ def parse_coordinates(query):
 
 async def google_geocode(address: str) -> Optional[Dict]:
     """使用Google Geocoding API获取地址的坐标 - 高并发优化版本"""
+    start_time = time.time()
+    
     try:
+        logger.info(f"🌐 开始Google地理编码请求 - 地址: {address}")
+        
         # 检查缓存
         cache_key = f"geocode:{hashlib.md5(address.encode()).hexdigest()}"
         cached_result = await get_cache_value(cache_key, 'geocode')
         if cached_result:
+            elapsed_time = (time.time() - start_time) * 1000
+            logger.info(f"✅ Google地理编码缓存命中 - 地址: {address}, 耗时: {elapsed_time:.2f}ms")
+            logger.debug(f"📍 缓存结果: lat={cached_result.get('lat')}, lng={cached_result.get('lng')}, address={cached_result.get('formatted_address')}")
             return cached_result
         
         # 检查API密钥
@@ -636,12 +643,18 @@ async def google_geocode(address: str) -> Optional[Dict]:
             'region': GOOGLE_GEOCODING_CONFIG['region']
         }
         
+        # 记录请求参数（隐藏API密钥）
+        safe_params = params.copy()
+        safe_params['key'] = f"{params['key'][:10]}...{params['key'][-5:]}" if len(params['key']) > 15 else "***"
+        logger.info(f"🔍 Google地理编码请求参数: {safe_params}")
+        
         # 支持重试机制
         max_retries = GOOGLE_GEOCODING_CONFIG.get('max_retries', 3)
         backoff_factor = GOOGLE_GEOCODING_CONFIG.get('backoff_factor', 0.3)
         
         for attempt in range(max_retries):
             try:
+                request_start = time.time()
                 async with aiohttp.ClientSession(
                     timeout=aiohttp.ClientTimeout(total=GOOGLE_GEOCODING_CONFIG['timeout'])
                 ) as session:
@@ -649,8 +662,13 @@ async def google_geocode(address: str) -> Optional[Dict]:
                         GOOGLE_GEOCODING_CONFIG['base_url'],
                         params=params
                     ) as response:
+                        request_time = (time.time() - request_start) * 1000
+                        
                         if response.status == 200:
                             data = await response.json()
+                            
+                            # 记录API响应状态
+                            logger.info(f"📡 Google API响应: status={data.get('status')}, 请求耗时: {request_time:.2f}ms")
                             
                             if data.get('status') == 'OK':
                                 results = data.get('results', [])
@@ -663,31 +681,47 @@ async def google_geocode(address: str) -> Optional[Dict]:
                                         'google_result': results[0]
                                     }
                                     
+                                    # 记录成功结果
+                                    total_time = (time.time() - start_time) * 1000
+                                    logger.info(f"✅ Google地理编码成功 - 地址: {address}")
+                                    logger.info(f"📍 结果: lat={result['lat']}, lng={result['lng']}, formatted_address={result['formatted_address']}")
+                                    logger.info(f"⏱️  总耗时: {total_time:.2f}ms (API请求: {request_time:.2f}ms)")
+                                    
                                     # 缓存结果
                                     await set_cache_value(cache_key, result, 'geocode')
                                     return result
                                 else:
                                     raise Exception("未找到该地址的坐标信息")
                             else:
-                                raise Exception(f"Google Geocoding API错误: {data.get('status')}")
+                                error_msg = f"Google Geocoding API错误: {data.get('status')}"
+                                if data.get('error_message'):
+                                    error_msg += f" - {data.get('error_message')}"
+                                raise Exception(error_msg)
                         else:
                             raise Exception(f"HTTP错误: {response.status}")
                             
             except Exception as e:
                 if attempt == max_retries - 1:
                     raise e
-                await asyncio.sleep(backoff_factor * (2 ** attempt))
+                retry_delay = backoff_factor * (2 ** attempt)
+                logger.warning(f"⚠️  Google地理编码重试 {attempt + 1}/{max_retries} - 错误: {e}, {retry_delay:.2f}秒后重试")
+                await asyncio.sleep(retry_delay)
         
         return None
         
     except Exception as e:
-        logger.error(f"Google地理编码失败: {e}")
+        total_time = (time.time() - start_time) * 1000
+        logger.error(f"❌ Google地理编码失败 - 地址: {address}, 错误: {e}, 耗时: {total_time:.2f}ms")
         return None
 
 # 保留原有的同步Google地理编码函数以兼容性
 def google_geocode_sync(address: str) -> Optional[Dict]:
     """同步版本的Google地理编码"""
+    start_time = time.time()
+    
     try:
+        logger.info(f"🌐 开始Google地理编码请求（同步） - 地址: {address}")
+        
         # 使用requests的同步版本
         cache_key = f"geocode:{hashlib.md5(address.encode()).hexdigest()}"
         
@@ -695,6 +729,9 @@ def google_geocode_sync(address: str) -> Optional[Dict]:
         if cache_key in memory_cache:
             timestamp, result = memory_cache[cache_key]
             if time.time() - timestamp < 3600:  # 1小时缓存
+                elapsed_time = (time.time() - start_time) * 1000
+                logger.info(f"✅ Google地理编码缓存命中（同步） - 地址: {address}, 耗时: {elapsed_time:.2f}ms")
+                logger.debug(f"📍 缓存结果: lat={result.get('lat')}, lng={result.get('lng')}, address={result.get('formatted_address')}")
                 return result
         
         params = {
@@ -704,14 +741,24 @@ def google_geocode_sync(address: str) -> Optional[Dict]:
             'region': GOOGLE_GEOCODING_CONFIG['region']
         }
         
+        # 记录请求参数（隐藏API密钥）
+        safe_params = params.copy()
+        safe_params['key'] = f"{params['key'][:10]}...{params['key'][-5:]}" if len(params['key']) > 15 else "***"
+        logger.info(f"🔍 Google地理编码请求参数（同步）: {safe_params}")
+        
+        request_start = time.time()
         response = requests.get(
             GOOGLE_GEOCODING_CONFIG['base_url'],
             params=params,
             timeout=GOOGLE_GEOCODING_CONFIG['timeout']
         )
+        request_time = (time.time() - request_start) * 1000
         
         if response.status_code == 200:
             data = response.json()
+            
+            # 记录API响应状态
+            logger.info(f"📡 Google API响应（同步）: status={data.get('status')}, 请求耗时: {request_time:.2f}ms")
             
             if data.get('status') == 'OK':
                 results = data.get('results', [])
@@ -724,21 +771,42 @@ def google_geocode_sync(address: str) -> Optional[Dict]:
                         'google_result': results[0]
                     }
                     
+                    # 记录成功结果
+                    total_time = (time.time() - start_time) * 1000
+                    logger.info(f"✅ Google地理编码成功（同步） - 地址: {address}")
+                    logger.info(f"📍 结果: lat={result['lat']}, lng={result['lng']}, formatted_address={result['formatted_address']}")
+                    logger.info(f"⏱️  总耗时: {total_time:.2f}ms (API请求: {request_time:.2f}ms)")
+                    
                     # 缓存结果
                     memory_cache[cache_key] = (time.time(), result)
                     return result
+                else:
+                    logger.warning(f"⚠️  Google地理编码无结果（同步） - 地址: {address}")
+            else:
+                error_msg = f"Google Geocoding API错误: {data.get('status')}"
+                if data.get('error_message'):
+                    error_msg += f" - {data.get('error_message')}"
+                logger.error(f"❌ {error_msg}")
+        else:
+            logger.error(f"❌ HTTP错误（同步）: {response.status_code}")
                     
         return None
         
     except Exception as e:
-        logger.error(f"同步Google地理编码失败: {e}")
+        total_time = (time.time() - start_time) * 1000
+        logger.error(f"❌ 同步Google地理编码失败 - 地址: {address}, 错误: {e}, 耗时: {total_time:.2f}ms")
         return None
 
 # 保留原有的反向地理编码函数
 def google_reverse_geocode(lat, lng):
     """使用Google Geocoding API进行反向地理编码获取地址信息"""
+    start_time = time.time()
+    
     try:
+        logger.info(f"🔍 开始Google反向地理编码请求 - 坐标: ({lat}, {lng})")
+        
         if not GOOGLE_GEOCODING_CONFIG['api_key'] or GOOGLE_GEOCODING_CONFIG['api_key'] == 'YOUR_GOOGLE_API_KEY_HERE':
+            logger.error("❌ Google API密钥未配置")
             return None
         
         # 检查缓存
@@ -746,6 +814,9 @@ def google_reverse_geocode(lat, lng):
         if cache_key in memory_cache:
             timestamp, result = memory_cache[cache_key]
             if time.time() - timestamp < 3600:  # 1小时缓存
+                elapsed_time = (time.time() - start_time) * 1000
+                logger.info(f"✅ Google反向地理编码缓存命中 - 坐标: ({lat}, {lng}), 耗时: {elapsed_time:.2f}ms")
+                logger.debug(f"📍 缓存结果: name={result.get('name')}, place_id={result.get('place_id')}")
                 return result
         
         params = {
@@ -756,14 +827,24 @@ def google_reverse_geocode(lat, lng):
             'result_type': 'establishment|point_of_interest|premise'
         }
         
+        # 记录请求参数（隐藏API密钥）
+        safe_params = params.copy()
+        safe_params['key'] = f"{params['key'][:10]}...{params['key'][-5:]}" if len(params['key']) > 15 else "***"
+        logger.info(f"🔍 Google反向地理编码请求参数: {safe_params}")
+        
+        request_start = time.time()
         response = requests.get(
             GOOGLE_GEOCODING_CONFIG['base_url'],
             params=params,
             timeout=GOOGLE_GEOCODING_CONFIG['timeout']
         )
+        request_time = (time.time() - request_start) * 1000
         
         if response.status_code == 200:
             data = response.json()
+            
+            # 记录API响应状态
+            logger.info(f"📡 Google反向地理编码API响应: status={data.get('status')}, 请求耗时: {request_time:.2f}ms")
             
             if data.get('status') == 'OK':
                 results = data.get('results', [])
@@ -797,23 +878,44 @@ def google_reverse_geocode(lat, lng):
                             'types': results[0].get('types', [])
                         }
                         
+                        # 记录成功结果
+                        total_time = (time.time() - start_time) * 1000
+                        logger.info(f"✅ Google反向地理编码成功 - 坐标: ({lat}, {lng})")
+                        logger.info(f"📍 结果: name={address_info['name']}, place_id={address_info['place_id']}")
+                        logger.info(f"⏱️  总耗时: {total_time:.2f}ms (API请求: {request_time:.2f}ms)")
+                        
                         # 缓存结果
                         memory_cache[cache_key] = (time.time(), address_info)
                         return address_info
+                    else:
+                        logger.warning(f"⚠️  Google反向地理编码结果无效 - 坐标: ({lat}, {lng}), 名称: {building_name}")
+                else:
+                    logger.warning(f"⚠️  Google反向地理编码无结果 - 坐标: ({lat}, {lng})")
+            else:
+                error_msg = f"Google反向地理编码API错误: {data.get('status')}"
+                if data.get('error_message'):
+                    error_msg += f" - {data.get('error_message')}"
+                logger.error(f"❌ {error_msg}")
+        else:
+            logger.error(f"❌ Google反向地理编码HTTP错误: {response.status_code}")
         
         return None
         
     except Exception as e:
-        logger.error(f"Google反向地理编码失败: {e}")
+        total_time = (time.time() - start_time) * 1000
+        logger.error(f"❌ Google反向地理编码失败 - 坐标: ({lat}, {lng}), 错误: {e}, 耗时: {total_time:.2f}ms")
         return None
 
 def get_google_building_name(lat, lng):
     """获取Google建筑名称"""
     try:
+        logger.debug(f"🏢 获取Google建筑名称 - 坐标: ({lat}, {lng})")
         address_info = google_reverse_geocode(lat, lng)
         if address_info and address_info.get('name'):
+            logger.debug(f"📍 获取到建筑名称: {address_info['name']}")
             return address_info['name']
+        logger.debug(f"⚠️  未获取到建筑名称 - 坐标: ({lat}, {lng})")
         return None
     except Exception as e:
-        logger.error(f"获取Google建筑名称失败: {e}")
+        logger.error(f"❌ 获取Google建筑名称失败 - 坐标: ({lat}, {lng}), 错误: {e}")
         return None 

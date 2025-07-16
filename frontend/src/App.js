@@ -200,29 +200,29 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Suspense fallback={<div>{t('app.connecting')}</div>}>
-        <Box sx={{ display: 'flex', height: '100vh' }}>
-          <Sidebar 
+      <Box sx={{ display: 'flex', height: '100vh' }}>
+        <Sidebar 
+          apiStatus={apiStatus} 
+          selectedCategory={selectedCategory}
+          onCategoryChange={handleCategoryChange}
+          layersVisible={layersVisible}
+          onLayerToggle={handleLayerToggle}
+          onDataTypeFilter={handleDataTypeFilter}
+          dataTypeFilters={dataTypeFilters}
+            configLoaded={configLoaded}
+        />
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <Header />
+          <MapViewer 
             apiStatus={apiStatus} 
             selectedCategory={selectedCategory}
-            onCategoryChange={handleCategoryChange}
             layersVisible={layersVisible}
             onLayerToggle={handleLayerToggle}
-            onDataTypeFilter={handleDataTypeFilter}
             dataTypeFilters={dataTypeFilters}
-            configLoaded={configLoaded}
-          />
-          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <Header />
-            <MapViewer 
-              apiStatus={apiStatus} 
-              selectedCategory={selectedCategory}
-              layersVisible={layersVisible}
-              onLayerToggle={handleLayerToggle}
-              dataTypeFilters={dataTypeFilters}
               configLoaded={configLoaded}
-            />
-          </Box>
+          />
         </Box>
+      </Box>
       </Suspense>
     </ThemeProvider>
   );

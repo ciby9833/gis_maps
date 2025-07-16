@@ -201,7 +201,7 @@ const FenceToolbar = ({
     if (onDrawingStateChange) {
       onDrawingStateChange(true);
     }
-    
+
     // 启动绘制工具
     if (mapInstance.customDrawTools) {
       try {
@@ -221,11 +221,11 @@ const FenceToolbar = ({
     if (onDrawingStateChange) {
       onDrawingStateChange(false);
     }
-    
+
     // 停止绘制工具
     if (mapInstance?.customDrawTools) {
       try {
-        mapInstance.customDrawTools.stopDrawing();
+      mapInstance.customDrawTools.stopDrawing();
       } catch (error) {
         console.error('停止绘制工具失败:', error);
       }
@@ -263,7 +263,7 @@ const FenceToolbar = ({
   // 绘制完成处理
   const handleCustomDrawComplete = useCallback((event) => {
     if (event && event.geometry) {
-      setGeometry(event.geometry);
+    setGeometry(event.geometry);
     }
     
     // 自动停止绘制
@@ -421,8 +421,8 @@ const FenceToolbar = ({
     
     // 清理绘制图层
     if (drawLayerRef.current && mapInstance) {
-      mapInstance.removeLayer(drawLayerRef.current);
-      drawLayerRef.current = null;
+        mapInstance.removeLayer(drawLayerRef.current);
+        drawLayerRef.current = null;
     }
     
     // 重置状态
@@ -524,9 +524,9 @@ const FenceToolbar = ({
           {isDrawing && <Chip size="small" label={t('fenceToolbar.drawing')} color="primary" />}
           {geometry && <Chip size="small" label={t('fenceToolbar.drawn')} color="success" />}
         </Box>
-        <IconButton onClick={handleClose} size="small">
-          <Close />
-        </IconButton>
+          <IconButton onClick={handleClose} size="small">
+            <Close />
+          </IconButton>
       </Box>
 
       {/* 错误提示 */}
@@ -693,8 +693,8 @@ const FenceToolbar = ({
                   </Button>
                 ) : (
                   <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button
-                      variant="contained"
+                  <Button
+                    variant="contained"
                       color="primary"
                       onClick={finishDrawing}
                       sx={{ flex: 1 }}
@@ -704,12 +704,12 @@ const FenceToolbar = ({
                     </Button>
                     <Button
                       variant="outlined"
-                      color="warning"
-                      onClick={stopDrawing}
+                    color="warning"
+                    onClick={stopDrawing}
                       sx={{ flex: 1 }}
-                    >
+                  >
                       取消绘制
-                    </Button>
+                  </Button>
                   </Box>
                 )}
               </Grid>
