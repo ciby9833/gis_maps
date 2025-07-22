@@ -406,6 +406,7 @@
     "borderWidth": "Border Width",
     "drawingTools": "Drawing Tools",
     "selectDrawingMode": "Select Drawing Mode",
+    "finishDrawing": "Finish Drawing",
     "startDrawing": "Start Drawing",
     "stopDrawing": "Stop Drawing",
     "startEditing": "Start Editing",
@@ -433,4 +434,4 @@
     "drawFenceOnMap": "Please draw fence on map",
     "drawingToolsNotReady": "Drawing tools not ready"
   }
-} 
+}

@@ -408,6 +408,7 @@
     "selectDrawingMode": "选择绘制模式",
     "startDrawing": "开始绘制",
     "stopDrawing": "停止绘制",
+    "finishDrawing": "完成绘制",
     "startEditing": "开始编辑",
     "stopEditing": "停止编辑",
     "fenceDrawn": "围栏已绘制",
@@ -433,4 +434,4 @@
     "drawFenceOnMap": "请在地图上绘制围栏",
     "drawingToolsNotReady": "绘制工具未就绪"
   }
-} 
+}
