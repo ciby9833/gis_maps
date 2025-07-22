@@ -329,7 +329,7 @@ const MapViewer = ({
   const [fenceToolbarVisible, setFenceToolbarVisible] = useState(false);
   const [fenceToolbarMode, setFenceToolbarMode] = useState("create");
   const [currentFence, setCurrentFence] = useState(null);
-  const [fenceDrawing, setFenceDrawing] = useState(true);
+  const [fenceDrawing, setFenceDrawing] = useState(false);
 
   // 其他功能状态
   const [validateBuildings, setValidateBuildings] = useState(() => getStoredBoolean(MAPVIEWER_STORAGE_KEYS.VALIDATE_BUILDINGS, false));
@@ -1289,12 +1289,15 @@ const MapViewer = ({
     [currentBounds, currentZoom, loadLayerData, loadFenceStats]
   );
 
-  const handleDrawingStateChange = useCallback((isDrawing) => {
-    console.log("Drawing state changed:", isDrawing);
-    console.log("Drawing state changed fenceDrawing 1:", fenceDrawing);
-    setFenceDrawing(isDrawing);
-    console.log("Drawing state changed fenceDrawing 2:", fenceDrawing);
-  }, []);
+  const handleDrawingStateChange = useCallback(
+    (isDrawing) => {
+      console.log("Drawing state changed:", isDrawing);
+      console.log("Drawing state changed fenceDrawing 1:", fenceDrawing);
+      setFenceDrawing(isDrawing);
+      console.log("Drawing state changed fenceDrawing 2:", fenceDrawing);
+    },
+    [setFenceDrawing]
+  );
 
   // 全局围栏选择函数
   useEffect(() => {
