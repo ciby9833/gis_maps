@@ -2,57 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Paper, Typography, TextField, Button, IconButton, FormControl, InputLabel, Select, MenuItem, Slider, Alert, CircularProgress, Grid, Chip, Tooltip, Divider, ButtonGroup } from "@mui/material";
 import { Close, Save, Cancel, Draw, Edit, Square, Palette, Delete, Undo, Redo } from "@mui/icons-material";
 import { useTranslation } from "react-i18next";
-
-/**
- * 内联API函数 - 创建围栏
- */
-const createFence = async (apiBaseUrl, fenceData) => {
-  const response = await fetch(`${apiBaseUrl}/api/fences`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(fenceData),
-  });
-  if (!response.ok) {
-    throw new Error(`创建围栏失败: ${response.status}`);
-  }
-  return await response.json();
-};
-
-/**
- * 内联API函数 - 更新围栏
- */
-const updateFence = async (apiBaseUrl, fenceId, fenceData) => {
-  const response = await fetch(`${apiBaseUrl}/api/fences/${fenceId}`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(fenceData),
-  });
-  if (!response.ok) {
-    throw new Error(`更新围栏失败: ${response.status}`);
-  }
-  return await response.json();
-};
-
-/**
- * 内联API函数 - 验证围栏几何
- */
-const validateFenceGeometry = async (apiBaseUrl, geometry) => {
-  const response = await fetch(`${apiBaseUrl}/api/fences/validate-geometry`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(geometry),
-  });
-  if (!response.ok) {
-    throw new Error(`验证围栏几何失败: ${response.status}`);
-  }
-  return await response.json();
-};
+import { createFence, updateFence, validateFenceGeometry } from '../utils/fenceAPI';
 
 /**
  * 围栏工具栏组件
@@ -367,9 +317,9 @@ const FenceToolbar = ({
 
       let result;
       if (mode === "create") {
-        result = await createFence(apiBaseUrl, submitData);
+        result = await createFence(submitData);
       } else {
-        result = await updateFence(apiBaseUrl, fence.id, submitData);
+        result = await updateFence(fence.id, submitData);
       }
 
       if (onSuccess) {

@@ -47,32 +47,7 @@ import {
   Square
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
-
-/**
- * 内联API函数 - 检测围栏重叠
- */
-const detectFenceOverlaps = async (apiBaseUrl, fenceId) => {
-  const response = await fetch(`${apiBaseUrl}/api/fences/${fenceId}/overlaps`);
-  if (!response.ok) {
-    throw new Error(`检测围栏重叠失败: ${response.status}`);
-  }
-  return await response.json();
-};
-
-/**
- * 内联API函数 - 获取围栏图层分析
- */
-const getFenceLayerAnalysis = async (apiBaseUrl, fenceId, layerTypes = null) => {
-  const urlParams = new URLSearchParams();
-  if (layerTypes && layerTypes.length > 0) {
-    urlParams.append('layer_types', layerTypes.join(','));
-  }
-  const response = await fetch(`${apiBaseUrl}/api/fences/${fenceId}/layer-analysis?${urlParams}`);
-  if (!response.ok) {
-    throw new Error(`获取围栏图层分析失败: ${response.status}`);
-  }
-  return await response.json();
-};
+import { detectFenceOverlaps, getFenceLayerAnalysis } from '../utils/fenceAPI';
 
 /**
  * 围栏详情对话框组件
@@ -106,8 +81,8 @@ const FenceDetailDialog = ({
 
       // 并行加载重叠检测和图层分析
       const [overlapResult, layerResult] = await Promise.allSettled([
-        detectFenceOverlaps(apiBaseUrl, fence.id),
-        getFenceLayerAnalysis(apiBaseUrl, fence.id)
+        detectFenceOverlaps(fence.id),
+        getFenceLayerAnalysis(fence.id)
       ]);
 
       // 处理重叠检测结果
@@ -126,7 +101,7 @@ const FenceDetailDialog = ({
     } finally {
       setLoading(false);
     }
-  }, [fence, apiBaseUrl]);
+  }, [fence]);
 
   // 组件打开时加载数据
   useEffect(() => {

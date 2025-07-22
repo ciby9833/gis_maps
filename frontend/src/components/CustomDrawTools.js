@@ -1019,18 +1019,18 @@ const CustomDrawTools = ({
       pathManagerRef.current.stopDrawing();
     }
 
-    // // 恢复地图样式
-    // const mapContainer = map.getContainer();
-    // if (mapContainer) {
-    //   mapContainer.style.cursor = '';
-    // }
+    // 恢复地图样式
+    const mapContainer = map.getContainer();
+    if (mapContainer) {
+      mapContainer.style.cursor = '';
+    }
 
-    // // 清理地图事件监听器
-    // if (map._customDrawHandlers) {
-    //   map.off('click', map._customDrawHandlers.click);
-    //   map.off('contextmenu', map._customDrawHandlers.contextmenu);
-    //   delete map._customDrawHandlers;
-    // }
+    // 清理地图事件监听器
+    if (map._customDrawHandlers) {
+      map.off('click', map._customDrawHandlers.click);
+      map.off('contextmenu', map._customDrawHandlers.contextmenu);
+      delete map._customDrawHandlers;
+    }
 
     // 恢复其他图层的交互事件
     if (map.enableLayerEvents) {

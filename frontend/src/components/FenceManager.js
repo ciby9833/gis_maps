@@ -47,42 +47,8 @@ import {
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import FenceDetailDialog from './FenceDetailDialog';
-
-/**
- * 内联API函数 - 获取围栏列表
- */
-const getFenceList = async (apiBaseUrl, params = {}) => {
-  const urlParams = new URLSearchParams();
-  
-  Object.keys(params).forEach(key => {
-    if (params[key] !== undefined && params[key] !== null) {
-      urlParams.append(key, params[key]);
-    }
-  });
-
-  const response = await fetch(`${apiBaseUrl}/api/fences?${urlParams}`);
-  
-  if (!response.ok) {
-    throw new Error(`获取围栏列表失败: ${response.status}`);
-  }
-
-  return await response.json();
-};
-
-/**
- * 内联API函数 - 删除围栏
- */
-const deleteFence = async (apiBaseUrl, fenceId) => {
-  const response = await fetch(`${apiBaseUrl}/api/fences/${fenceId}`, {
-    method: 'DELETE'
-  });
-
-  if (!response.ok) {
-    throw new Error(`删除围栏失败: ${response.status}`);
-  }
-
-  return await response.json();
-};
+import { getFenceList, deleteFence } from '../utils/fenceAPI';
+import { useLoadingState } from '../hooks/useLoadingState';
 
 /**
  * 围栏管理器主组件
@@ -102,11 +68,10 @@ const FenceManager = ({
 }) => {
   const { t } = useTranslation();
   
-  // 围栏数据管理
+  // 围栏数据管理  
   const [fences, setFences] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [totalCount, setTotalCount] = useState(0);
+  const { loading, error, startLoading, stopLoading, setErrorState } = useLoadingState();
 
   // 组件状态
   const [searchQuery, setSearchQuery] = useState('');
@@ -121,8 +86,7 @@ const FenceManager = ({
   // 加载围栏数据
   const loadFenceData = useCallback(async () => {
     try {
-      setLoading(true);
-      setError(null);
+      startLoading();
       
       const params = {
         status: statusFilter,
@@ -140,21 +104,21 @@ const FenceManager = ({
       //   params.bbox = bbox;
       // }
 
-      const response = await getFenceList(apiBaseUrl, params);
+      const response = await getFenceList(params);
       
       if (response.success) {
         setFences(response.data.fences || []);
         setTotalCount(response.data.total_count || 0);
       } else {
-        setError(response.error || '加载围栏数据失败');
+        setErrorState(response.error || '加载围栏数据失败');
       }
     } catch (error) {
       console.error('加载围栏数据失败:', error);
-      setError(error.message);
+      setErrorState(error.message);
     } finally {
-      setLoading(false);
+      stopLoading();
     }
-  }, [apiBaseUrl, statusFilter, typeFilter, page, pageSize]); // 移除currentBounds依赖
+  }, [statusFilter, typeFilter, page, pageSize, startLoading, stopLoading, setErrorState]); // 移除currentBounds和apiBaseUrl依赖
 
   // 组件挂载时加载数据
   useEffect(() => {
@@ -205,7 +169,7 @@ const FenceManager = ({
 
     try {
       setActionLoading(true);
-      await deleteFence(apiBaseUrl, fence.id);
+      await deleteFence(fence.id);
       
       if (onFenceDelete) {
         onFenceDelete(fence);
@@ -220,7 +184,7 @@ const FenceManager = ({
     } finally {
       setActionLoading(false);
     }
-  }, [apiBaseUrl, onFenceDelete, loadFenceData, t]);
+  }, [onFenceDelete, loadFenceData, t]);
 
   // 创建围栏
   const handleCreate = useCallback(() => {
