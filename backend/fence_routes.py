@@ -186,7 +186,6 @@ async def get_fence_list_endpoint(
         else:
             effective_limit = limit
         
-        # 检查数据库连接
         try:
             result = await get_fence_list(
                 status=status,
@@ -208,7 +207,6 @@ async def get_fence_list_endpoint(
                         'effective_limit': effective_limit
                     }
                 
-                # 🔥 修复双重嵌套问题：直接返回result内容，避免data中再嵌套data
                 return {
                     "success": True,
                     "data": {
@@ -223,7 +221,7 @@ async def get_fence_list_endpoint(
                 }
             else:
                 raise HTTPException(status_code=400, detail=result.get('error', '围栏列表获取失败'))
-        
+                
         except ValueError as e:
             if "DB_PASSWORD" in str(e) or "必需的环境变量" in str(e):
                 # 数据库连接失败，返回空的围栏列表

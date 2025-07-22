@@ -760,6 +760,25 @@ const MapViewer = ({
       alert(t("mapViewer.getNearbyInfoFailed") + ": " + error.message);
     }
   };
+  // 图层事件控制方法
+  const disableLayerEvents = useCallback(() => {
+    if (!mapInstance) return;
+    
+    // 设置全局绘制模式标志
+    mapInstance._drawingMode = true;
+    
+    console.log('Layer events disabled for drawing mode');
+  }, [mapInstance]);
+
+  const enableLayerEvents = useCallback(() => {
+    if (!mapInstance) return;
+    
+    // 清除全局绘制模式标志
+    mapInstance._drawingMode = false;
+    
+    console.log('Layer events enabled after drawing mode');
+  }, [mapInstance]);
+
   // 获取用户位置 - 支持直接传map实例
   const getUserLocation = useCallback(
     (customMapInstance = null) => {
@@ -808,13 +827,17 @@ const MapViewer = ({
         map._fenceDrawLayer = new window.L.FeatureGroup().addTo(map);
       }
 
+      // 暴露图层事件控制方法给 CustomDrawTools
+      map.disableLayerEvents = disableLayerEvents;
+      map.enableLayerEvents = enableLayerEvents;
+
       // 仅在首次加载时自动获取定位（遵循Google地图的做法）
       // 检查是否已经有用户位置，如果没有才自动获取
       if (!userLocation) {
         getUserLocation(map);
       }
     },
-    [getUserLocation, userLocation]
+    [getUserLocation, userLocation, disableLayerEvents, enableLayerEvents]
   );
 
   // 边界变化处理
@@ -1139,11 +1162,17 @@ const MapViewer = ({
       layer.bindPopup(popupContent);
 
       layer.on("mouseover", function () {
+        // 检查是否在绘制模式
+        if (mapInstance && mapInstance._drawingMode) return;
+        
         const hoverStyle = props.is_on_land === false ? { fillColor: "#ff1744", fillOpacity: 0.8, weight: 3 } : { fillColor: "#ff5722", fillOpacity: 0.6, weight: 2 };
         this.setStyle(hoverStyle);
       });
 
       layer.on("mouseout", function () {
+        // 检查是否在绘制模式
+        if (mapInstance && mapInstance._drawingMode) return;
+        
         this.setStyle(getEnhancedBuildingStyle(feature));
       });
     }
@@ -1167,6 +1196,9 @@ const MapViewer = ({
       layer.bindPopup(popupContent);
 
       layer.on("mouseover", function () {
+        // 检查是否在绘制模式
+        if (mapInstance && mapInstance._drawingMode) return;
+        
         this.setStyle({
           fillColor: "#81c784",
           fillOpacity: 0.6,
@@ -1176,6 +1208,9 @@ const MapViewer = ({
       });
 
       layer.on("mouseout", function () {
+        // 检查是否在绘制模式
+        if (mapInstance && mapInstance._drawingMode) return;
+        
         this.setStyle(getLandPolygonStyleEnhanced());
       });
     }
@@ -1206,6 +1241,9 @@ const MapViewer = ({
       layer.bindPopup(popupContent);
 
       layer.on("mouseover", function () {
+        // 检查是否在绘制模式
+        if (mapInstance && mapInstance._drawingMode) return;
+        
         this.setStyle({
           fillOpacity: Math.min((props.fence_opacity || 0.3) + 0.2, 1),
           weight: (props.fence_stroke_width || 2) + 1,
@@ -1213,10 +1251,16 @@ const MapViewer = ({
       });
 
       layer.on("mouseout", function () {
+        // 检查是否在绘制模式
+        if (mapInstance && mapInstance._drawingMode) return;
+        
         this.setStyle(getFenceStyle(feature));
       });
 
       layer.on("click", function () {
+        // 检查是否在绘制模式 - 在绘制模式下完全禁用点击事件
+        if (mapInstance && mapInstance._drawingMode) return;
+        
         setSelectedFence(props);
         if (layer._clickCount && layer._clickCount === 2) {
           if (!fenceToolbarVisible) {
@@ -1510,6 +1554,14 @@ const MapViewer = ({
                       </div>
                     `;
                       layer.bindPopup(popupContent);
+                      
+                      // 添加事件监听器时检查绘制模式
+                      layer.on("click", function(e) {
+                        if (mapInstance && mapInstance._drawingMode) {
+                          e.stopPropagation();
+                          return;
+                        }
+                      });
                     }
                   }}
                   eventHandlers={{
@@ -1557,6 +1609,14 @@ const MapViewer = ({
                       </div>
                     `;
                       layer.bindPopup(popupContent);
+                      
+                      // 添加事件监听器时检查绘制模式
+                      layer.on("click", function(e) {
+                        if (mapInstance && mapInstance._drawingMode) {
+                          e.stopPropagation();
+                          return;
+                        }
+                      });
                     }
                   }}
                   eventHandlers={{
@@ -1604,6 +1664,14 @@ const MapViewer = ({
                       </div>
                     `;
                       layer.bindPopup(popupContent);
+                      
+                      // 添加事件监听器时检查绘制模式
+                      layer.on("click", function(e) {
+                        if (mapInstance && mapInstance._drawingMode) {
+                          e.stopPropagation();
+                          return;
+                        }
+                      });
                     }
                   }}
                   eventHandlers={{
@@ -1651,6 +1719,14 @@ const MapViewer = ({
                       </div>
                     `;
                       layer.bindPopup(popupContent);
+                      
+                      // 添加事件监听器时检查绘制模式
+                      layer.on("click", function(e) {
+                        if (mapInstance && mapInstance._drawingMode) {
+                          e.stopPropagation();
+                          return;
+                        }
+                      });
                     }
                   }}
                   eventHandlers={{
@@ -1699,6 +1775,14 @@ const MapViewer = ({
                       </div>
                     `;
                       layer.bindPopup(popupContent);
+                      
+                      // 添加事件监听器时检查绘制模式
+                      layer.on("click", function(e) {
+                        if (mapInstance && mapInstance._drawingMode) {
+                          e.stopPropagation();
+                          return;
+                        }
+                      });
                     }
                   }}
                   eventHandlers={{
