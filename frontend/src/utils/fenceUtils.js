@@ -208,29 +208,180 @@ export const getConfirmMessage = (action, fenceName) => {
  * 确保CSS中的z-index值与JavaScript常量一致
  */
 export const generateFenceLayerCSS = () => `
+  /* 围栏图层样式 - 确保持久显示 */
   .fence-layer {
     z-index: ${Z_INDEX.FENCE_LAYER} !important;
-    pointer-events: auto !important;
+    pointer-events: auto;
   }
-  .leaflet-interactive.fence-layer {
-    z-index: ${Z_INDEX.FENCE_LAYER} !important;
-  }
+  
+  /* 绘制覆盖层样式 - 最高优先级 */
   .drawing-overlay {
     z-index: ${Z_INDEX.DRAWING_OVERLAY} !important;
-    pointer-events: none !important;
+    pointer-events: none;
+    background: transparent;
+    cursor: crosshair;
   }
-  .drawing-overlay.active {
-    pointer-events: auto !important;
-  }
-  /* 锚点和控制柄层级 */
-  .leaflet-tooltip-pane {
+  
+  /* 锚点和控制柄样式 */
+  .leaflet-marker-icon,
+  .leaflet-marker-shadow {
     z-index: ${Z_INDEX.ANCHOR_POINTS} !important;
   }
-  .leaflet-tooltip-pane .leaflet-interactive {
-    z-index: ${Z_INDEX.ANCHOR_POINTS} !important;
-  }
-  /* 围栏工具栏层级 */
-  [data-drawing-toolbar="true"] {
+  
+  /* 围栏工具栏样式 */
+  .fence-toolbar {
     z-index: ${Z_INDEX.FENCE_TOOLBAR} !important;
+    backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.98);
   }
-`; 
+  
+  /* 完成绘制后的围栏图层 */
+  .completed-fence-layer {
+    z-index: ${Z_INDEX.FENCE_PATH} !important;
+    pointer-events: auto;
+  }
+  
+  /* 编辑模式的围栏图层 */
+  .editing-fence-layer {
+    z-index: ${Z_INDEX.FENCE_PATH} !important;
+    pointer-events: auto;
+    cursor: move;
+  }
+  
+  /* 编辑模式备用显示 */
+  .editing-fence-fallback {
+    z-index: ${Z_INDEX.FENCE_PATH} !important;
+    pointer-events: auto;
+    opacity: 0.8;
+  }
+  
+  /* 绘制过程中的路径 */
+  .leaflet-interactive {
+    z-index: ${Z_INDEX.FENCE_PATH} !important;
+  }
+`;
+
+/**
+ * 应用z-index到图层
+ * @param {L.Layer} layer - Leaflet图层对象
+ * @param {number} zIndex - z-index值
+ */
+export const applyZIndexToLayer = (layer, zIndex) => {
+  if (!layer) return;
+  
+  try {
+    // 设置图层的z-index
+    if (layer.setZIndex) {
+      layer.setZIndex(zIndex);
+    }
+    
+    // 对于路径图层，直接设置DOM元素的z-index
+    if (layer._path) {
+      layer._path.style.zIndex = zIndex;
+    }
+    
+    // 对于标记图层
+    if (layer._icon) {
+      layer._icon.style.zIndex = zIndex;
+    }
+    
+    // 对于图层组
+    if (layer.eachLayer) {
+      layer.eachLayer(subLayer => applyZIndexToLayer(subLayer, zIndex));
+    }
+    
+    console.log(`图层z-index已设置为: ${zIndex}`);
+  } catch (error) {
+    console.error("设置图层z-index失败:", error);
+  }
+};
+
+/**
+ * 创建持久化的围栏显示图层
+ * @param {Object} geometry - GeoJSON几何对象
+ * @param {Object} style - 样式配置
+ * @param {L.Map} map - Leaflet地图实例
+ * @returns {L.Layer} 创建的图层
+ */
+export const createPersistentFenceLayer = (geometry, style, map) => {
+  if (!geometry || !geometry.coordinates || !map) {
+    console.warn("创建围栏图层参数不足");
+    return null;
+  }
+  
+  try {
+    const coords = geometry.coordinates[0];
+    const latLngs = coords.slice(0, -1).map(coord => L.latLng(coord[1], coord[0]));
+    
+    if (latLngs.length < 3) {
+      console.warn("坐标点不足，无法创建围栏图层");
+      return null;
+    }
+    
+    const layer = L.polygon(latLngs, {
+      ...style,
+      className: 'persistent-fence-layer',
+      interactive: true
+    });
+    
+    // 应用z-index
+    applyZIndexToLayer(layer, Z_INDEX.FENCE_PATH);
+    
+    // 添加到地图
+    layer.addTo(map);
+    
+    console.log("持久化围栏图层已创建");
+    return layer;
+  } catch (error) {
+    console.error("创建持久化围栏图层失败:", error);
+    return null;
+  }
+};
+
+/**
+ * 清理围栏相关的所有图层
+ * @param {L.Map} map - Leaflet地图实例
+ */
+export const cleanupFenceLayers = (map) => {
+  if (!map) return;
+  
+  try {
+    // 清理所有围栏相关的图层
+    map.eachLayer(layer => {
+      if (layer.options && layer.options.className) {
+        const className = layer.options.className;
+        if (className.includes('fence') || className.includes('drawing') || className.includes('anchor')) {
+          map.removeLayer(layer);
+        }
+      }
+    });
+    
+    console.log("围栏图层已清理");
+  } catch (error) {
+    console.error("清理围栏图层失败:", error);
+  }
+};
+
+/**
+ * 注入围栏样式到页面
+ */
+export const injectFenceStyles = () => {
+  const styleId = 'fence-layer-styles';
+  
+  // 避免重复注入
+  if (document.getElementById(styleId)) {
+    return;
+  }
+  
+  try {
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.type = 'text/css';
+    style.innerHTML = generateFenceLayerCSS();
+    document.head.appendChild(style);
+    
+    console.log("围栏样式已注入");
+  } catch (error) {
+    console.error("注入围栏样式失败:", error);
+  }
+}; 

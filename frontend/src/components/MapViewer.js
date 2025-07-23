@@ -4,18 +4,11 @@ import { MapContainer, TileLayer, GeoJSON, useMap, Marker, Popup, CircleMarker, 
 import { API_BASE_URL, MAP_CONFIG, configLoader } from "../config";
 import { MyLocation, Layers, Search, LocationOn } from "@mui/icons-material";
 import { useTranslation } from "react-i18next";
-import { generateFenceLayerCSS } from "../utils/fenceUtils";
+import { generateFenceLayerCSS, injectFenceStyles } from "../utils/fenceUtils";
 import "leaflet/dist/leaflet.css";
 
-// 围栏图层样式 - 使用统一的层级配置
-const fenceLayerStyle = generateFenceLayerCSS();
-
-// 注入样式
-if (typeof document !== "undefined") {
-  const style = document.createElement("style");
-  style.textContent = fenceLayerStyle;
-  document.head.appendChild(style);
-}
+// 围栏图层样式初始化 - 使用工具函数确保样式正确注入
+injectFenceStyles();
 
 // 修复Leaflet图标问题
 import L from "leaflet";
@@ -32,6 +25,22 @@ const MAPVIEWER_STORAGE_KEYS = {
   VALIDATE_BUILDINGS: "gis_validate_buildings",
   LAND_DISPLAY_MODE: "gis_land_display_mode",
   AUTO_LOCATION_ENABLED: "gis_auto_location_enabled",
+};
+
+// 🔧 统一的绘制模式检查函数 - 避免重复代码
+const isDrawingModeActive = (mapInstance) => {
+  return mapInstance && mapInstance._drawingMode;
+};
+
+// 🔧 统一的绘制模式事件处理 - 阻止交互但允许地图拖拽
+const handleDrawingModeEvent = (mapInstance, e = null, preventDefault = false) => {
+  if (isDrawingModeActive(mapInstance)) {
+    if (e && preventDefault) {
+      e.stopPropagation();
+    }
+    return true; // 表示在绘制模式下，应该阻止后续处理
+  }
+  return false; // 表示不在绘制模式下，可以正常处理
 };
 
 // 从localStorage获取布尔值
@@ -302,8 +311,7 @@ const MapViewer = ({
   const [selectedFence, setSelectedFence] = useState(null);
   const [fencesVisible, setFencesVisible] = useState(() => getStoredBoolean(MAPVIEWER_STORAGE_KEYS.FENCES_VISIBLE, true));
   const [fenceToolbarVisible, setFenceToolbarVisible] = useState(false);
-  const [fenceToolbarMode, setFenceToolbarMode] = useState("create");
-  const [currentFence, setCurrentFence] = useState(null);
+  const [currentFence, setCurrentFence] = useState(null); // 统一：空=新增，有值=编辑
   const [fenceDrawing, setFenceDrawing] = useState(false);
 
   // 其他功能状态
@@ -792,22 +800,16 @@ const MapViewer = ({
     [mapInstance, t]
   );
 
-  // 地图准备就绪回调 - 只在首次加载时获取用户位置
+  // 地图准备就绪回调 - 简化初始化，避免图层管理冲突
   const handleMapReady = useCallback(
     (map) => {
       setMapInstance(map);
-
-      // 创建围栏图层
-      if (!map._fenceDrawLayer) {
-        map._fenceDrawLayer = new window.L.FeatureGroup().addTo(map);
-      }
 
       // 暴露图层事件控制方法给 CustomDrawTools
       map.disableLayerEvents = disableLayerEvents;
       map.enableLayerEvents = enableLayerEvents;
 
-      // 仅在首次加载时自动获取定位（遵循Google地图的做法）
-      // 检查是否已经有用户位置，如果没有才自动获取
+      // 仅在首次加载时自动获取定位
       if (!userLocation) {
         getUserLocation(map);
       }
@@ -1137,16 +1139,14 @@ const MapViewer = ({
       layer.bindPopup(popupContent);
 
       layer.on("mouseover", function () {
-        // 检查是否在绘制模式
-        if (mapInstance && mapInstance._drawingMode) return;
+        if (handleDrawingModeEvent(mapInstance)) return;
         
         const hoverStyle = props.is_on_land === false ? { fillColor: "#ff1744", fillOpacity: 0.8, weight: 3 } : { fillColor: "#ff5722", fillOpacity: 0.6, weight: 2 };
         this.setStyle(hoverStyle);
       });
 
       layer.on("mouseout", function () {
-        // 检查是否在绘制模式
-        if (mapInstance && mapInstance._drawingMode) return;
+        if (handleDrawingModeEvent(mapInstance)) return;
         
         this.setStyle(getEnhancedBuildingStyle(feature));
       });
@@ -1171,8 +1171,7 @@ const MapViewer = ({
       layer.bindPopup(popupContent);
 
       layer.on("mouseover", function () {
-        // 检查是否在绘制模式
-        if (mapInstance && mapInstance._drawingMode) return;
+        if (handleDrawingModeEvent(mapInstance)) return;
         
         this.setStyle({
           fillColor: "#81c784",
@@ -1183,8 +1182,7 @@ const MapViewer = ({
       });
 
       layer.on("mouseout", function () {
-        // 检查是否在绘制模式
-        if (mapInstance && mapInstance._drawingMode) return;
+        if (handleDrawingModeEvent(mapInstance)) return;
         
         this.setStyle(getLandPolygonStyleEnhanced());
       });
@@ -1216,8 +1214,7 @@ const MapViewer = ({
       layer.bindPopup(popupContent);
 
       layer.on("mouseover", function () {
-        // 检查是否在绘制模式
-        if (mapInstance && mapInstance._drawingMode) return;
+        if (handleDrawingModeEvent(mapInstance)) return;
         
         this.setStyle({
           fillOpacity: Math.min((props.fence_opacity || 0.3) + 0.2, 1),
@@ -1226,20 +1223,18 @@ const MapViewer = ({
       });
 
       layer.on("mouseout", function () {
-        // 检查是否在绘制模式
-        if (mapInstance && mapInstance._drawingMode) return;
+        if (handleDrawingModeEvent(mapInstance)) return;
         
         this.setStyle(getFenceStyle(feature));
       });
 
       layer.on("click", function () {
-        // 检查是否在绘制模式 - 在绘制模式下完全禁用点击事件
-        if (mapInstance && mapInstance._drawingMode) return;
+        if (handleDrawingModeEvent(mapInstance)) return;
         
         setSelectedFence(props);
         if (layer._clickCount && layer._clickCount === 2) {
           if (!fenceToolbarVisible) {
-            handleEditFence(props);
+            handleConfigureFence(props);
           }
         } else {
           layer._clickCount = 1;
@@ -1274,15 +1269,9 @@ const MapViewer = ({
     [mapInstance]
   );
 
-  const handleCreateFence = useCallback(() => {
-    setFenceToolbarMode("create");
-    setCurrentFence(null);
-    setFenceToolbarVisible(true);
-  }, []);
-
-  const handleEditFence = useCallback((fence) => {
-    setFenceToolbarMode("edit");
-    setCurrentFence(fence);
+  // 统一的围栏配置函数 - 空数据=新增，有数据=编辑
+  const handleConfigureFence = useCallback((fence = null) => {
+    setCurrentFence(fence); // null=新增围栏，fence对象=编辑围栏
     setFenceToolbarVisible(true);
   }, []);
 
@@ -1405,22 +1394,19 @@ const MapViewer = ({
   return (
     <Box sx={{ flex: 1, minHeight: "600px", position: "relative" }}>
       {/* 围栏工具栏 */}
-      <FenceToolbar visible={fenceToolbarVisible} mode={fenceToolbarMode} fence={currentFence} mapInstance={mapInstance} apiBaseUrl={API_BASE_URL} onClose={handleCloseFenceToolbar} onSuccess={handleFenceToolbarSuccess} onDrawingStateChange={handleDrawingStateChange} />
+      <FenceToolbar visible={fenceToolbarVisible} fence={currentFence} mapInstance={mapInstance} apiBaseUrl={API_BASE_URL} onClose={handleCloseFenceToolbar} onSuccess={handleFenceToolbarSuccess} onDrawingStateChange={handleDrawingStateChange} />
 
       <MapContainer center={[MAP_CONFIG.center.lat, MAP_CONFIG.center.lng]} zoom={MAP_CONFIG.zoom} minZoom={MAP_CONFIG.minZoom} maxZoom={MAP_CONFIG.maxZoom} style={{ width: "100%", height: "100%" }}>
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' />
 
         <MapEventHandler onBoundsChange={handleBoundsChange} onZoomChange={handleZoomChange} onMapReady={handleMapReady} />
 
-        {/* 改进的CustomDrawTools组件 */}
+        {/* CustomDrawTools组件 - 移除编辑控制，避免与FenceToolbar冲突 */}
         <CustomDrawTools
           isActive={fenceDrawing}
           onDrawComplete={handleCustomDrawComplete}
           onRef={handleCustomDrawToolsRef}
           drawingMode="polygon"
-          drawLayerGroup={mapInstance?._fenceDrawLayer}
-          editingGeometry={fenceToolbarMode === "edit" && currentFence ? currentFence.geometry : null}
-          editingAnchors={fenceToolbarMode === "edit" && currentFence ? currentFence.anchors : null}
           style={{
             color: "#FF0000",
             fillColor: "#FF0000",
@@ -1530,12 +1516,9 @@ const MapViewer = ({
                     `;
                       layer.bindPopup(popupContent);
                       
-                      // 添加事件监听器时检查绘制模式
+                      // 绘制模式下阻止交互
                       layer.on("click", function(e) {
-                        if (mapInstance && mapInstance._drawingMode) {
-                          e.stopPropagation();
-                          return;
-                        }
+                        if (handleDrawingModeEvent(mapInstance, e, true)) return;
                       });
                     }
                   }}
@@ -1585,12 +1568,9 @@ const MapViewer = ({
                     `;
                       layer.bindPopup(popupContent);
                       
-                      // 添加事件监听器时检查绘制模式
+                      // 绘制模式下阻止交互
                       layer.on("click", function(e) {
-                        if (mapInstance && mapInstance._drawingMode) {
-                          e.stopPropagation();
-                          return;
-                        }
+                        if (handleDrawingModeEvent(mapInstance, e, true)) return;
                       });
                     }
                   }}
@@ -1640,12 +1620,9 @@ const MapViewer = ({
                     `;
                       layer.bindPopup(popupContent);
                       
-                      // 添加事件监听器时检查绘制模式
+                      // 绘制模式下阻止交互
                       layer.on("click", function(e) {
-                        if (mapInstance && mapInstance._drawingMode) {
-                          e.stopPropagation();
-                          return;
-                        }
+                        if (handleDrawingModeEvent(mapInstance, e, true)) return;
                       });
                     }
                   }}
@@ -1695,12 +1672,9 @@ const MapViewer = ({
                     `;
                       layer.bindPopup(popupContent);
                       
-                      // 添加事件监听器时检查绘制模式
+                      // 绘制模式下阻止交互
                       layer.on("click", function(e) {
-                        if (mapInstance && mapInstance._drawingMode) {
-                          e.stopPropagation();
-                          return;
-                        }
+                        if (handleDrawingModeEvent(mapInstance, e, true)) return;
                       });
                     }
                   }}
@@ -1751,12 +1725,9 @@ const MapViewer = ({
                     `;
                       layer.bindPopup(popupContent);
                       
-                      // 添加事件监听器时检查绘制模式
+                      // 绘制模式下阻止交互
                       layer.on("click", function(e) {
-                        if (mapInstance && mapInstance._drawingMode) {
-                          e.stopPropagation();
-                          return;
-                        }
+                        if (handleDrawingModeEvent(mapInstance, e, true)) return;
                       });
                     }
                   }}
@@ -1964,7 +1935,7 @@ const MapViewer = ({
           {/* 围栏管理 */}
           <Box sx={{ mb: 2 }}>
             <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mb: 1 }}>
-              <Button size="small" variant="contained" color="secondary" onClick={handleCreateFence} disabled={fenceToolbarVisible} sx={{ flex: 1 }}>
+              <Button size="small" variant="contained" color="secondary" onClick={() => handleConfigureFence()} disabled={fenceToolbarVisible} sx={{ flex: 1 }}>
                 🖊️ {t("mapViewer.createFence")}
               </Button>
               <Button size="small" variant="outlined" onClick={() => setShowFenceManager(true)} sx={{ flex: 1 }}>
@@ -1985,7 +1956,7 @@ const MapViewer = ({
                 {fencesVisible ? `🟢 ${t("mapViewer.fenceDisplay")}` : `⚪ ${t("mapViewer.fenceHidden")}`}
               </Button>
               {selectedFence && (
-                <Button size="small" variant="outlined" onClick={() => handleEditFence(selectedFence)} disabled={fenceToolbarVisible}>
+                <Button size="small" variant="outlined" onClick={() => handleConfigureFence(selectedFence)} disabled={fenceToolbarVisible}>
                   ✏️ {t("mapViewer.editFence")}
                 </Button>
               )}
@@ -2119,8 +2090,8 @@ const MapViewer = ({
         mapInstance={mapInstance}
         currentBounds={currentBounds}
         onFenceSelect={handleFenceSelect}
-        onFenceCreate={handleCreateFence}
-        onFenceEdit={handleEditFence}
+        onFenceCreate={() => handleConfigureFence()}
+        onFenceEdit={handleConfigureFence}
         onFenceUpdate={() => {
           if (currentBounds) {
             loadLayerData("fences", currentBounds, currentZoom);

@@ -80,10 +80,15 @@ class PathManager {
     this.map = map;
     this.style = style;
     this.anchors = []; // 锚点数组
-    this.pathLayer = null; // 路径图层
+    this.pathLayer = null; // 绘制中的路径图层
+    this.completedLayer = null; // 完成绘制后的显示图层
     this.isDrawing = false; // 是否在绘制模式
     this.isEditing = false; // 是否在编辑模式
     this.dragState = null; // 拖动状态
+    
+    // 创建专用的图层组，确保持久化
+    this.layerGroup = L.featureGroup().addTo(map);
+    this.layerGroup.setZIndex(Z_INDEX.FENCE_PATH);
   }
 
   // 添加锚点
@@ -561,7 +566,8 @@ class PathManager {
   // 更新路径显示
   updatePath() {
     if (this.pathLayer) {
-      this.map.removeLayer(this.pathLayer);
+      this.layerGroup.removeLayer(this.pathLayer);
+      this.pathLayer = null;
     }
 
     if (this.anchors.length < 2) return;
@@ -582,21 +588,18 @@ class PathManager {
           ...this.style,
           fill: this.anchors.length > 2,
           fillOpacity: this.anchors.length > 2 ? this.style.fillOpacity : 0,
-          pane: "overlayPane", // 使用标准覆盖层
-          interactive: false, // 路径不需要交互
-        }).addTo(this.map);
+          interactive: false, // 绘制过程中不需要交互
+        });
 
-        // 确保路径在围栏图层之上但在锚点之下
-        if (this.pathLayer._path) {
-          this.pathLayer._path.style.zIndex = Z_INDEX.FENCE_PATH;
-        }
+        // 添加到专用图层组，确保持久性
+        this.layerGroup.addLayer(this.pathLayer);
       }
     } catch (error) {
       console.error("Error updating path:", error);
     }
   }
 
-  // 完成路径绘制
+  // 完成路径绘制 - 立即创建显示图层
   finishPath() {
     if (this.anchors.length < 3) {
       console.warn("需要至少3个锚点才能创建围栏");
@@ -611,8 +614,35 @@ class PathManager {
       coordinates: [pathPoints.concat([pathPoints[0]]).map((point) => [point.lng, point.lat])],
     };
 
+    // 清除绘制中的路径
+    if (this.pathLayer) {
+      this.layerGroup.removeLayer(this.pathLayer);
+      this.pathLayer = null;
+    }
+
+    // 创建完成后的显示图层，立即添加到地图
+    try {
+      this.completedLayer = L.polygon(pathPoints, {
+        ...this.style,
+        fill: true,
+        fillOpacity: this.style.fillOpacity || 0.3,
+        interactive: false,
+        className: 'completed-fence-layer'
+      });
+
+      // 添加到图层组，确保持久显示
+      this.layerGroup.addLayer(this.completedLayer);
+      
+      console.log("围栏绘制完成，已添加到地图显示");
+    } catch (error) {
+      console.error("Error creating completed fence layer:", error);
+    }
+
+    // 停止绘制模式
+    this.isDrawing = false;
+
     return {
-      layer: this.pathLayer,
+      layer: this.completedLayer,
       geometry: geometry,
       anchors: this.anchors.map((anchor) => ({
         position: anchor.position,
@@ -637,122 +667,172 @@ class PathManager {
         }
       });
 
-      if (this.pathLayer && this.map) {
-        this.map.removeLayer(this.pathLayer);
+      // 清理图层组中的所有图层
+      if (this.layerGroup) {
+        this.layerGroup.clearLayers();
       }
 
       this.anchors = [];
       this.pathLayer = null;
+      this.completedLayer = null;
     } catch (error) {
       console.error("Error during cleanup:", error);
     }
   }
 
-  // 进入编辑模式
+  // 进入编辑模式 - 改进几何数据注入
   enterEditMode(geometry, anchorData = null) {
     try {
+      // 清理现有状态
       this.cleanup();
-      this.isEditing = true;
-
-      if (anchorData && anchorData.length > 0) {
-        // 从锚点数据恢复
-        let validAnchorsCreated = 0;
-
-        anchorData.forEach((data, index) => {
-          try {
-            // 验证锚点数据的有效性
-            if (!data.position || isNaN(data.position.lat) || isNaN(data.position.lng)) {
-              console.warn(`Invalid anchor data at index ${index}:`, data);
-              return;
-            }
-
-            const anchor = new AnchorPoint(data.position, data.type);
-            anchor.setControlHandles(data.controlHandle1, data.controlHandle2);
-            this.anchors.push(anchor);
-            this.createAnchorMarker(anchor, validAnchorsCreated);
-
-            if (anchor.hasControlHandles()) {
-              if (anchor.controlHandle1 && !isNaN(anchor.controlHandle1.lat) && !isNaN(anchor.controlHandle1.lng)) {
-                this.createControlHandleMarker(anchor, "handle1", anchor.controlHandle1, validAnchorsCreated);
-              }
-              if (anchor.controlHandle2 && !isNaN(anchor.controlHandle2.lat) && !isNaN(anchor.controlHandle2.lng)) {
-                this.createControlHandleMarker(anchor, "handle2", anchor.controlHandle2, validAnchorsCreated);
-              }
-            }
-
-            validAnchorsCreated++;
-          } catch (error) {
-            console.error(`Error creating anchor from data at index ${index}:`, error, data);
-          }
-        });
-
-        if (validAnchorsCreated < 3) {
-          console.warn("Not enough valid anchors created from anchor data:", validAnchorsCreated);
-        }
-      } else if (geometry && geometry.coordinates) {
-        // 从几何数据创建锚点 - 添加坐标去重逻辑
+      
+      // 先创建显示图层
+      if (geometry && geometry.coordinates) {
         const coords = geometry.coordinates[0];
-        const uniqueCoords = [];
-        const tolerance = 0.0001; // 坐标去重容差
-
-        coords.slice(0, -1).forEach((coord, index) => {
-          // 验证坐标有效性
-          if (!Array.isArray(coord) || coord.length < 2 || isNaN(coord[0]) || isNaN(coord[1]) || !isFinite(coord[0]) || !isFinite(coord[1])) {
-            console.warn(`Invalid coordinate at index ${index}:`, coord);
-            return;
-          }
-
-          const [lng, lat] = coord;
-
-          // 检查坐标范围
-          if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-            console.warn(`Coordinate out of valid range at index ${index}:`, coord);
-            return;
-          }
-
-          // 检查是否与已有坐标重复
-          const isDuplicate = uniqueCoords.some((existingCoord) => {
-            const dx = Math.abs(existingCoord[0] - lng);
-            const dy = Math.abs(existingCoord[1] - lat);
-            return dx < tolerance && dy < tolerance;
+        const latLngs = coords.slice(0, -1).map(coord => L.latLng(coord[1], coord[0]));
+        
+        if (latLngs.length >= 3) {
+          // 创建可编辑的围栏图层
+          this.completedLayer = L.polygon(latLngs, {
+            ...this.style,
+            color: '#0066FF', // 编辑模式使用不同颜色
+            fillColor: '#0066FF',
+            fill: true,
+            fillOpacity: this.style.fillOpacity || 0.3,
+            interactive: true,
+            className: 'editing-fence-layer'
           });
 
-          if (!isDuplicate) {
-            uniqueCoords.push([lng, lat]);
-          } else {
-            console.warn(`Duplicate coordinate removed at index ${index}:`, coord);
+          // 添加到图层组
+          this.layerGroup.addLayer(this.completedLayer);
+          
+          // 启用编辑功能
+          if (this.completedLayer.editing) {
+            this.completedLayer.editing.enable();
           }
-        });
+          
+          console.log("编辑模式：围栏图层已显示并启用编辑");
+        }
+      }
 
-        // 确保至少有3个有效坐标
-        if (uniqueCoords.length < 3) {
-          console.error("Not enough valid coordinates for fence editing:", uniqueCoords.length);
+      // 初始化锚点系统
+      if (anchorData && anchorData.length > 0) {
+        // 从锚点数据恢复
+        this.initializeFromAnchorData(anchorData);
+      } else if (geometry && geometry.coordinates) {
+        // 从几何数据创建锚点
+        this.initializeFromGeometry(geometry);
+      }
+
+      this.isEditing = true;
+      this.updatePath();
+      
+    } catch (error) {
+      console.error("Error in enterEditMode:", error);
+      this.cleanup(); // 清理任何可能创建的部分状态
+    }
+  }
+
+  // 从锚点数据初始化
+  initializeFromAnchorData(anchorData) {
+    let validAnchorsCreated = 0;
+
+    anchorData.forEach((data, index) => {
+      try {
+        // 验证锚点数据的有效性
+        if (!data.position || isNaN(data.position.lat) || isNaN(data.position.lng)) {
+          console.warn(`Invalid anchor data at index ${index}:`, data);
           return;
         }
 
-        // 创建锚点
-        let validAnchorsCreated = 0;
+        const anchor = new AnchorPoint(data.position, data.type);
+        anchor.setControlHandles(data.controlHandle1, data.controlHandle2);
+        this.anchors.push(anchor);
+        this.createAnchorMarker(anchor, validAnchorsCreated);
 
-        uniqueCoords.forEach((coord, index) => {
-          try {
-            const anchor = new AnchorPoint(L.latLng(coord[1], coord[0]));
-            this.anchors.push(anchor);
-            this.createAnchorMarker(anchor, validAnchorsCreated);
-            validAnchorsCreated++;
-          } catch (error) {
-            console.error(`Error creating anchor at index ${index}:`, error, coord);
+        if (anchor.hasControlHandles()) {
+          if (anchor.controlHandle1 && !isNaN(anchor.controlHandle1.lat) && !isNaN(anchor.controlHandle1.lng)) {
+            this.createControlHandleMarker(anchor, "handle1", anchor.controlHandle1, validAnchorsCreated);
           }
+          if (anchor.controlHandle2 && !isNaN(anchor.controlHandle2.lat) && !isNaN(anchor.controlHandle2.lng)) {
+            this.createControlHandleMarker(anchor, "handle2", anchor.controlHandle2, validAnchorsCreated);
+          }
+        }
+
+        validAnchorsCreated++;
+      } catch (error) {
+        console.error(`Error creating anchor from data at index ${index}:`, error, data);
+      }
+    });
+
+    if (validAnchorsCreated < 3) {
+      console.warn("Not enough valid anchors created from anchor data:", validAnchorsCreated);
+    }
+  }
+
+  // 从几何数据初始化
+  initializeFromGeometry(geometry) {
+    try {
+      const coords = geometry.coordinates[0];
+      const uniqueCoords = [];
+      const tolerance = 0.0001; // 坐标去重容差
+
+      coords.slice(0, -1).forEach((coord, index) => {
+        // 验证坐标有效性
+        if (!Array.isArray(coord) || coord.length < 2 || isNaN(coord[0]) || isNaN(coord[1]) || !isFinite(coord[0]) || !isFinite(coord[1])) {
+          console.warn(`Invalid coordinate at index ${index}:`, coord);
+          return;
+        }
+
+        const [lng, lat] = coord;
+
+        // 检查坐标范围
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+          console.warn(`Coordinate out of valid range at index ${index}:`, coord);
+          return;
+        }
+
+        // 检查是否与已有坐标重复
+        const isDuplicate = uniqueCoords.some((existingCoord) => {
+          const dx = Math.abs(existingCoord[0] - lng);
+          const dy = Math.abs(existingCoord[1] - lat);
+          return dx < tolerance && dy < tolerance;
         });
 
-        if (validAnchorsCreated < 3) {
-          console.warn("Not enough valid anchors created from geometry:", validAnchorsCreated);
+        if (!isDuplicate) {
+          uniqueCoords.push([lng, lat]);
+        } else {
+          console.warn(`Duplicate coordinate removed at index ${index}:`, coord);
         }
+      });
+
+      // 确保至少有3个有效坐标
+      if (uniqueCoords.length < 3) {
+        console.error("Not enough valid coordinates for fence editing:", uniqueCoords.length);
+        return;
+      }
+
+      // 创建锚点
+      let validAnchorsCreated = 0;
+
+      uniqueCoords.forEach((coord, index) => {
+        try {
+          const anchor = new AnchorPoint(L.latLng(coord[1], coord[0]));
+          this.anchors.push(anchor);
+          this.createAnchorMarker(anchor, validAnchorsCreated);
+          validAnchorsCreated++;
+        } catch (error) {
+          console.error(`Error creating anchor at index ${index}:`, error, coord);
+        }
+      });
+
+      if (validAnchorsCreated < 3) {
+        console.warn("Not enough valid anchors created from geometry:", validAnchorsCreated);
       }
 
       this.updatePath();
     } catch (error) {
-      console.error("Error in enterEditMode:", error);
-      this.cleanup(); // 清理任何可能创建的部分状态
+      console.error("Error initializing from geometry:", error);
     }
   }
 
@@ -772,25 +852,48 @@ class PathManager {
       this.removeControlHandles(anchor);
     });
     this.anchors = [];
+    
+    // 清理所有图层
+    if (this.layerGroup) {
+      this.layerGroup.clearLayers();
+    }
     this.pathLayer = null;
+    this.completedLayer = null;
+    
     this.updatePath();
   }
 
   startDrawing() {
     this.isDrawing = true;
-    this.isEditing = false; // 确保在绘制模式下不处于编辑模式
+    this.isEditing = false;
+    
+    // 清理完成图层，开始新的绘制
+    if (this.completedLayer) {
+      this.layerGroup.removeLayer(this.completedLayer);
+      this.completedLayer = null;
+    }
+    
     this.updatePath();
   }
 
   stopDrawing() {
     this.isDrawing = false;
-    this.isEditing = false;
     this.updatePath();
   }
 
   // 检查是否正在绘制
   isDrawingActive() {
     return this.isDrawing;
+  }
+
+  // 检查是否正在编辑
+  isEditingActive() {
+    return this.isEditing;
+  }
+
+  // 获取当前显示的图层
+  getCurrentLayer() {
+    return this.completedLayer || this.pathLayer;
   }
 
   generateGeometry() {
@@ -1054,8 +1157,47 @@ const CustomDrawTools = ({
       stopDrawing: () => {
         handleStopDrawing();
       },
+      finishDrawing: () => {
+        // 手动完成绘制并返回结果
+        if (pathManagerRef.current) {
+          const result = pathManagerRef.current.finishPath();
+          if (result) {
+            // 清理地图事件监听器
+            if (map._customDrawHandlers) {
+              map.off("click", map._customDrawHandlers.click);
+              map.off("contextmenu", map._customDrawHandlers.contextmenu);
+              delete map._customDrawHandlers;
+            }
+            
+            // 恢复地图样式
+            const mapContainer = map.getContainer();
+            if (mapContainer) {
+              mapContainer.style.cursor = "";
+            }
+            
+            // 恢复其他图层的交互事件
+            if (map.enableLayerEvents) {
+              map.enableLayerEvents();
+            }
+            
+            console.log("手动完成绘制，返回结果:", result);
+          }
+          return result;
+        }
+        return null;
+      },
+      enterEditMode: (geometry, anchors) => {
+        // 进入编辑模式
+        if (pathManagerRef.current) {
+          pathManagerRef.current.enterEditMode(geometry, anchors);
+          console.log("进入编辑模式，几何数据:", geometry);
+        }
+      },
       isDrawing: () => {
         return pathManagerRef.current?.isDrawingActive() || false;
+      },
+      isEditing: () => {
+        return pathManagerRef.current?.isEditingActive() || false;
       },
       getAnchors: () => {
         return pathManagerRef.current?.getAnchors() || [];
@@ -1066,8 +1208,11 @@ const CustomDrawTools = ({
       clearDrawing: () => {
         pathManagerRef.current?.clearAnchors();
       },
+      getCurrentLayer: () => {
+        return pathManagerRef.current?.getCurrentLayer() || null;
+      }
     }),
-    []
+    [handleStartDrawing, handleStopDrawing, map]
   );
 
   // 通过回调暴露组件引用
@@ -1114,32 +1259,12 @@ const CustomDrawTools = ({
 
   // 监听isActive状态变化，自动激活或停用绘制工具
   useEffect(() => {
-    console.log("检测到 isActive 变化:", isActive);
     if (isActive) {
-      // if (pathManagerRef.current && !pathManagerRef.current.isDrawingActive()) {
-      console.log("启动绘制模式");
       handleStartDrawing();
-      // }
     } else {
-      // if (pathManagerRef.current?.isDrawingActive()) {
-      console.log("关闭绘制模式");
       handleStopDrawing();
-      // }
     }
   }, [isActive, handleStartDrawing, handleStopDrawing]);
-  // useEffect(() => {
-  //   console.log("CustomDrawTools isActive changed:", isActive);
-  //   if (isActive && !pathManagerRef.current?.isDrawingActive()) {
-  //     // 当工具栏激活时，自动开始绘制
-  //     setTimeout(() => {
-  //       console.log("CustomDrawTools isActive changed 111:", isActive);
-  //       handleStartDrawing();
-  //     }, 100);
-  //   } else if (!isActive && pathManagerRef.current?.isDrawingActive()) {
-  //     // 当工具栏关闭时，停止绘制
-  //     handleStopDrawing();
-  //   }
-  // }, [isActive, handleStartDrawing, handleStopDrawing]);
 
   // 监听编辑数据变化
   useEffect(() => {
@@ -1148,18 +1273,26 @@ const CustomDrawTools = ({
     }
   }, [editingGeometry, editingAnchors, isActive]);
 
-  // 暴露方法
+  // 暴露方法到地图实例
   useEffect(() => {
     if (map) {
       map.customDrawTools = {
         startDrawing: handleStartDrawing,
         stopDrawing: handleStopDrawing,
-        finishDrawing: handleFinishDrawing,
+        finishDrawing: () => {
+          // 手动完成绘制的快捷方法
+          return componentMethods.finishDrawing();
+        },
+        enterEditMode: (geometry, anchors) => {
+          // 进入编辑模式的快捷方法
+          componentMethods.enterEditMode(geometry, anchors);
+        },
         isDrawing: () => pathManagerRef.current?.isDrawingActive() || false,
-        isEditing: () => pathManagerRef.current?.isEditing || false,
+        isEditing: () => pathManagerRef.current?.isEditingActive() || false,
         getAnchors: () => pathManagerRef.current?.getAnchors() || [],
         generateGeometry: () => pathManagerRef.current?.generateGeometry() || null,
         clearDrawing: () => pathManagerRef.current?.clearAnchors(),
+        getCurrentLayer: () => pathManagerRef.current?.getCurrentLayer() || null,
         setDrawingMode: () => {},
         getCurrentMode: () => drawingMode,
       };
@@ -1170,7 +1303,7 @@ const CustomDrawTools = ({
         delete map.customDrawTools;
       }
     };
-  }, [map, handleStartDrawing, handleStopDrawing, handleFinishDrawing, drawingMode]);
+  }, [map, handleStartDrawing, handleStopDrawing, componentMethods, drawingMode]);
 
   return null;
 };

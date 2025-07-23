@@ -15,13 +15,12 @@ import {
 
 /**
  * 围栏工具栏组件
- * 在地图顶部显示围栏创建和编辑界面
- * 简化后的版本，移除重复逻辑
+ * 统一的围栏配置界面 - 自动判断新增/编辑模式
+ * fence=null时为新增模式，fence有值时为编辑模式
  */
 const FenceToolbar = ({
   visible,
-  mode = "create", // 'create' | 'edit'
-  fence = null,
+  fence = null, // 统一参数：null=新增，有值=编辑
   mapInstance,
   onClose,
   onSuccess,
@@ -29,6 +28,9 @@ const FenceToolbar = ({
 }) => {
   const { t } = useTranslation();
 
+  // 自动判断操作模式
+  const isEditMode = Boolean(fence);
+  
   // 统一的loading状态管理
   const { loading, error, startLoading, stopLoading, setErrorState, clearError } = useLoadingState();
 
@@ -75,7 +77,7 @@ const FenceToolbar = ({
 
   // 初始化表单数据
   useEffect(() => {
-    if (mode === "edit" && fence) {
+    if (fence) {
       setFormData({
         fence_name: fence.fence_name || "",
         fence_type: fence.fence_type || "polygon",
@@ -109,7 +111,7 @@ const FenceToolbar = ({
     // 清除错误和验证状态
     clearError();
     setValidationErrors({});
-  }, [mode, fence, visible, clearError]);
+  }, [fence, clearError]);
 
   // 开始绘制
   const startDrawing = useCallback(() => {
@@ -163,11 +165,12 @@ const FenceToolbar = ({
         // 获取当前锚点数量
         const anchors = mapInstance.customDrawTools.getAnchors();
         if (anchors.length >= 3) {
-          // 手动触发完成绘制
-          const geometry = mapInstance.customDrawTools.generateGeometry();
-
-          if (geometry) {
-            setGeometry(geometry);
+          // 调用CustomDrawTools的完成绘制方法，这会立即显示围栏
+          const result = mapInstance.customDrawTools.finishDrawing();
+          
+          if (result && result.geometry) {
+            setGeometry(result.geometry);
+            console.log("围栏绘制完成，几何数据已获取:", result.geometry);
             stopDrawing();
           } else {
             alert("生成几何数据失败，请重试");
@@ -184,14 +187,16 @@ const FenceToolbar = ({
     }
   }, [mapInstance, stopDrawing]);
 
-  // 绘制完成处理
+  // 绘制完成处理 - 改进自动处理逻辑
   const handleCustomDrawComplete = useCallback(
     (event) => {
+      console.log("收到绘制完成事件:", event);
       if (event && event.geometry) {
         setGeometry(event.geometry);
+        console.log("围栏几何数据已设置:", event.geometry);
       }
 
-      // 自动停止绘制
+      // 自动停止绘制状态
       stopDrawing();
     },
     [stopDrawing]
@@ -203,12 +208,6 @@ const FenceToolbar = ({
       return;
     }
 
-    // 创建绘制图层
-    if (!drawLayerRef.current) {
-      drawLayerRef.current = new window.L.FeatureGroup();
-      mapInstance.addLayer(drawLayerRef.current);
-    }
-
     // 注册绘制完成回调到地图实例
     if (!mapInstance.fenceToolbar) {
       mapInstance.fenceToolbar = {};
@@ -218,11 +217,8 @@ const FenceToolbar = ({
     isInitializedRef.current = true;
 
     return () => {
-      if (!visible && drawLayerRef.current && mapInstance) {
+      if (!visible && mapInstance) {
         try {
-          mapInstance.removeLayer(drawLayerRef.current);
-          drawLayerRef.current = null;
-
           // 清理回调注册
           if (mapInstance.fenceToolbar) {
             delete mapInstance.fenceToolbar.handleDrawComplete;
@@ -235,35 +231,35 @@ const FenceToolbar = ({
     };
   }, [visible, mapInstance, handleCustomDrawComplete]);
 
-  // 处理编辑模式下现有围栏几何的显示
+  // 处理编辑模式下现有围栏几何的显示 - 确保正确启动编辑
   useEffect(() => {
-    if (mode === "edit" && fence && fence.geometry && drawLayerRef.current && mapInstance && window.L) {
-      try {
-        // 清除现有图层
-        drawLayerRef.current.clearLayers();
-
-        // 创建围栏图层并添加到地图
-        const geoJsonLayer = window.L.geoJSON(fence.geometry, {
-          style: {
-            color: fence.fence_color || "#FF0000",
-            fillColor: fence.fence_color || "#FF0000",
-            fillOpacity: fence.fence_opacity || 0.3,
-            weight: fence.fence_stroke_width || 2,
-          },
-        });
-
-        drawLayerRef.current.addLayer(geoJsonLayer);
-
-        // 缩放到围栏范围
-        const bounds = geoJsonLayer.getBounds();
-        if (bounds.isValid()) {
-          mapInstance.fitBounds(bounds, { padding: [20, 20] });
+    if (isEditMode && fence && fence.geometry && mapInstance && visible) {
+      // 添加延迟确保CustomDrawTools已经初始化
+      const startEditMode = () => {
+        try {
+          console.log("进入编辑模式，围栏数据:", fence);
+          
+          // 使用CustomDrawTools的编辑模式
+          if (mapInstance.customDrawTools && mapInstance.customDrawTools.enterEditMode) {
+            mapInstance.customDrawTools.enterEditMode(
+              fence.geometry, 
+              fence.anchors || null
+            );
+            console.log("CustomDrawTools编辑模式已启动");
+          } else {
+            console.warn("CustomDrawTools编辑功能不可用，等待初始化...");
+            // 重试机制
+            setTimeout(startEditMode, 200);
+          }
+        } catch (error) {
+          console.error("显示编辑围栏几何失败:", error);
         }
-      } catch (error) {
-        console.error("显示现有围栏几何失败:", error);
-      }
+      };
+      
+      // 稍微延迟启动，确保CustomDrawTools已经完全初始化
+      setTimeout(startEditMode, 100);
     }
-  }, [mode, fence, mapInstance]);
+  }, [isEditMode, fence, mapInstance, visible]);
 
   // 表单字段变化处理
   const handleFieldChange = useCallback(
@@ -288,14 +284,14 @@ const FenceToolbar = ({
   const validateForm = useCallback(() => {
     const fenceData = {
       ...formData,
-      fence_geometry: geometry || (mode === "edit" && fence ? fence.geometry : null)
+      fence_geometry: geometry || (fence ? fence.geometry : null)
     };
     
     const validation = validateFenceData(fenceData);
     setValidationErrors(validation.errors);
     
     return validation.isValid;
-  }, [formData, geometry, mode, fence]);
+  }, [formData, geometry, fence]);
 
   // 保存围栏
   const handleSave = useCallback(async () => {
@@ -307,19 +303,19 @@ const FenceToolbar = ({
       startLoading();
 
       // 使用当前几何数据或编辑模式下的原始几何数据
-      const geometryData = geometry || (mode === "edit" && fence ? fence.geometry : null);
+      const geometryData = geometry || (fence ? fence.geometry : null);
 
       const submitData = {
         ...formData,
         fence_geometry: geometryData,
         // 保存锚点数据以便后续编辑
-        fence_anchors: formData.fence_anchors || (mode === "edit" && fence ? fence.anchors : null),
+        fence_anchors: formData.fence_anchors || (fence ? fence.anchors : null),
       };
 
       let result;
-      if (mode === "create") {
+      if (!fence) { // 新增模式
         result = await createFence(submitData);
-      } else {
+      } else { // 编辑模式
         result = await updateFence(fence.id, submitData);
       }
 
@@ -329,12 +325,12 @@ const FenceToolbar = ({
 
       handleClose();
     } catch (error) {
-      console.error(`${mode === "create" ? "创建" : "更新"}围栏失败:`, error);
+      console.error(`${!fence ? "创建" : "更新"}围栏失败:`, error);
       setErrorState(normalizeError(error));
     } finally {
       stopLoading();
     }
-  }, [formData, geometry, mode, fence, onSuccess, validateForm, startLoading, stopLoading, setErrorState]);
+  }, [formData, geometry, fence, onSuccess, validateForm, startLoading, stopLoading, setErrorState]);
 
   // 关闭工具栏
   const handleClose = useCallback(() => {
@@ -368,13 +364,27 @@ const FenceToolbar = ({
     }
   }, [isDrawing, stopDrawing, mapInstance, onClose]);
 
-  // 清除当前绘制
+  // 清除当前绘制 - 改进清理逻辑
   const handleClearDrawing = useCallback(() => {
-    if (drawLayerRef.current) {
-      drawLayerRef.current.clearLayers();
+    try {
+      // 清理CustomDrawTools中的绘制
+      if (mapInstance?.customDrawTools?.clearDrawing) {
+        mapInstance.customDrawTools.clearDrawing();
+        console.log("CustomDrawTools绘制已清理");
+      }
+      
+      // 清理FenceToolbar的图层
+      if (drawLayerRef.current) {
+        drawLayerRef.current.clearLayers();
+      }
+      
+      // 重置几何数据
+      setGeometry(null);
+      console.log("围栏绘制已清除");
+    } catch (error) {
+      console.error("清除绘制失败:", error);
     }
-    setGeometry(null);
-  }, []);
+  }, [mapInstance]);
 
   if (!visible) {
     return null;
@@ -436,7 +446,7 @@ const FenceToolbar = ({
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
         <Box display="flex" alignItems="center" gap={1}>
           <Draw color="primary" />
-          <Typography variant="h6">{mode === "create" ? t("fenceToolbar.createFence") : t("fenceToolbar.editFence")}</Typography>
+          <Typography variant="h6">{!fence ? t("fenceToolbar.createFence") : t("fenceToolbar.editFence")}</Typography>
           {isDrawing && <Chip size="small" label={t("fenceToolbar.drawing")} color="primary" />}
           {geometry && <Chip size="small" label={t("fenceToolbar.drawn")} color="success" />}
         </Box>
@@ -552,7 +562,7 @@ const FenceToolbar = ({
               <Grid item xs={12}>
                 {!isDrawing ? (
                   <Button variant="contained" color="success" onClick={startDrawing} disabled={loading} startIcon={<Edit />} fullWidth>
-                    {mode === "edit" ? t("fenceToolbar.startEditing") : t("fenceToolbar.startDrawing")}
+                    {!fence ? t("fenceToolbar.startDrawing") : t("fenceToolbar.startEditing")}
                   </Button>
                 ) : (
                   <Box sx={{ display: "flex", gap: 1 }}>
@@ -567,13 +577,13 @@ const FenceToolbar = ({
               </Grid>
 
               <Grid item xs={12}>
-                {geometry || (mode === "edit" && fence && fence.geometry) ? (
+                {geometry || (fence && fence.geometry) ? (
                   <Alert severity="success" sx={{ mb: 1 }}>
-                    ✅ {mode === "edit" ? t("fenceToolbar.fenceEdited") : t("fenceToolbar.fenceDrawn")}
+                    ✅ {fence ? t("fenceToolbar.fenceEdited") : t("fenceToolbar.fenceDrawn")}
                   </Alert>
                 ) : isDrawing ? (
                   <Alert severity="warning" sx={{ mb: 1 }}>
-                    🖊️ {mode === "edit" ? t("fenceToolbar.editingInProgress") : t("fenceToolbar.drawingInProgress")}
+                    🖊️ {fence ? t("fenceToolbar.editingInProgress") : t("fenceToolbar.drawingInProgress")}
                     <Chip size="small" label={`${anchorCount} 个锚点`} color={anchorCount >= 3 ? "success" : "default"} sx={{ ml: 1 }} />
                     <Box sx={{ mt: 1 }}>
                       <Typography variant="caption" display="block" sx={{ fontWeight: "bold", color: "primary.main" }}>
@@ -589,15 +599,15 @@ const FenceToolbar = ({
                   </Alert>
                 ) : (
                   <Alert severity="info" sx={{ mb: 1 }}>
-                    {validationErrors.geometry || (mode === "edit" ? `🎯 ${t("fenceToolbar.clickStartEditing")}` : `🎯 ${t("fenceToolbar.clickStartDrawing")}`)}
+                    {validationErrors.geometry || (fence ? `🎯 ${t("fenceToolbar.clickStartEditing")}` : `🎯 ${t("fenceToolbar.clickStartDrawing")}`)}
                   </Alert>
                 )}
               </Grid>
 
               <Grid item xs={12}>
                 <ButtonGroup size="small" fullWidth>
-                  <Button onClick={handleClearDrawing} disabled={!geometry && !(mode === "edit" && fence && fence.geometry)} startIcon={<Delete />} color="warning">
-                    {mode === "edit" ? t("fenceToolbar.resetFence") : t("fenceToolbar.clearDrawing")}
+                  <Button onClick={handleClearDrawing} disabled={!geometry && !(fence && fence.geometry)} startIcon={<Delete />} color="warning">
+                    {fence ? t("fenceToolbar.resetFence") : t("fenceToolbar.clearDrawing")}
                   </Button>
                 </ButtonGroup>
               </Grid>
@@ -612,8 +622,8 @@ const FenceToolbar = ({
             <Button variant="outlined" onClick={handleClose} startIcon={<Cancel />}>
               {t("fenceToolbar.cancel")}
             </Button>
-            <Button variant="contained" onClick={handleSave} disabled={loading || (!geometry && !(mode === "edit" && fence && fence.geometry)) || !formData.fence_name.trim()} startIcon={loading ? <CircularProgress size={16} /> : <Save />}>
-              {mode === "create" ? t("fenceToolbar.createFenceAction") : t("fenceToolbar.updateFenceAction")}
+            <Button variant="contained" onClick={handleSave} disabled={loading || (!geometry && !(fence && fence.geometry)) || !formData.fence_name.trim()} startIcon={loading ? <CircularProgress size={16} /> : <Save />}>
+              {fence ? t("fenceToolbar.updateFenceAction") : t("fenceToolbar.createFenceAction")}
             </Button>
           </Box>
         </Grid>
