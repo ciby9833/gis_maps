@@ -4,36 +4,11 @@ import { MapContainer, TileLayer, GeoJSON, useMap, Marker, Popup, CircleMarker, 
 import { API_BASE_URL, MAP_CONFIG, configLoader } from "../config";
 import { MyLocation, Layers, Search, LocationOn } from "@mui/icons-material";
 import { useTranslation } from "react-i18next";
+import { generateFenceLayerCSS } from "../utils/fenceUtils";
 import "leaflet/dist/leaflet.css";
 
-// 围栏图层样式 - 确保绘制工具能在其上方
-const fenceLayerStyle = `
-  .fence-layer {
-    z-index: 1000 !important;
-    pointer-events: auto !important;
-  }
-  .leaflet-interactive.fence-layer {
-    z-index: 1000 !important;
-  }
-  .drawing-overlay {
-    z-index: 10000 !important;
-    pointer-events: none !important;
-  }
-  .drawing-overlay.active {
-    pointer-events: auto !important;
-  }
-  /* 锚点和控制柄层级 */
-  .leaflet-tooltip-pane {
-    z-index: 10001 !important;
-  }
-  .leaflet-tooltip-pane .leaflet-interactive {
-    z-index: 10001 !important;
-  }
-  /* 围栏工具栏层级 */
-  [data-drawing-toolbar="true"] {
-    z-index: 10002 !important;
-  }
-`;
+// 围栏图层样式 - 使用统一的层级配置
+const fenceLayerStyle = generateFenceLayerCSS();
 
 // 注入样式
 if (typeof document !== "undefined") {

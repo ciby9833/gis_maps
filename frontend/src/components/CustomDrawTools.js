@@ -2,6 +2,7 @@
 import React, { useCallback, useRef, useEffect, useMemo } from "react";
 import { useMap } from "react-leaflet";
 import L from "leaflet";
+import { Z_INDEX } from "../utils/fenceUtils";
 
 /**
  * 锚点类型定义
@@ -129,13 +130,13 @@ class PathManager {
         fillOpacity: 0.8,
         draggable: true,
         pane: "tooltipPane", // 使用最高层级的pane
-        zIndexOffset: 10000, // 确保在最上层
+        zIndexOffset: Z_INDEX.ANCHOR_POINTS, // 确保在最上层
         interactive: true,
       }).addTo(this.map);
 
       // 确保标记在最高层级
       if (marker._path) {
-        marker._path.style.zIndex = "10001";
+        marker._path.style.zIndex = Z_INDEX.ANCHOR_POINTS;
       }
 
       marker._anchorIndex = index;
@@ -304,13 +305,13 @@ class PathManager {
         fillOpacity: 0.8,
         draggable: true,
         pane: "tooltipPane", // 使用最高层级的pane
-        zIndexOffset: 10000, // 确保在最上层
+        zIndexOffset: Z_INDEX.ANCHOR_POINTS, // 确保在最上层
         interactive: true,
       }).addTo(this.map);
 
       // 确保标记在最高层级
       if (marker._path) {
-        marker._path.style.zIndex = "10001";
+        marker._path.style.zIndex = Z_INDEX.ANCHOR_POINTS;
       }
 
       marker._isControlHandle = true;
@@ -387,7 +388,7 @@ class PathManager {
 
     // 确保连线在最高层级
     if (line._path) {
-      line._path.style.zIndex = "10001";
+      line._path.style.zIndex = Z_INDEX.ANCHOR_POINTS;
     }
 
     if (handleType === "handle1") {
@@ -587,7 +588,7 @@ class PathManager {
 
         // 确保路径在围栏图层之上但在锚点之下
         if (this.pathLayer._path) {
-          this.pathLayer._path.style.zIndex = "9999";
+          this.pathLayer._path.style.zIndex = Z_INDEX.FENCE_PATH;
         }
       }
     } catch (error) {
@@ -872,7 +873,7 @@ const CustomDrawTools = ({
     overlay.style.left = "0";
     overlay.style.width = "100%";
     overlay.style.height = "100%";
-    overlay.style.zIndex = "10000"; // 确保在围栏图层之上
+    overlay.style.zIndex = Z_INDEX.DRAWING_OVERLAY; // 确保在围栏图层之上
     overlay.style.pointerEvents = "none";
     overlay.style.backgroundColor = "transparent";
     overlay.className = "drawing-overlay";
@@ -886,7 +887,7 @@ const CustomDrawTools = ({
     if (drawingOverlayRef.current) {
       drawingOverlayRef.current.style.pointerEvents = "auto";
       drawingOverlayRef.current.style.cursor = "crosshair";
-      drawingOverlayRef.current.style.zIndex = "10000"; // 确保在最上层
+      drawingOverlayRef.current.style.zIndex = Z_INDEX.DRAWING_OVERLAY; // 确保在最上层
     }
   }, []);
 

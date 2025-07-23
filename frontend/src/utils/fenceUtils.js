@@ -12,17 +12,22 @@ export const FENCE_COLORS = [
   "#008000", "#808080", "#000000", "#FFFFFF"
 ];
 
-// 统一的层级配置
+// 统一的层级配置 - 与MapViewer.js中的CSS样式保持一致
 export const Z_INDEX = {
-  MAP_LAYERS: 1000,
-  MAP_CONTROLS: 1500,  
-  FENCE_LAYERS: 9999,
-  ANCHORS: 10000,
-  ANCHOR_HANDLES: 10001,
-  FENCE_TOOLBAR: 10002,
-  FENCE_TOOLBAR_COLLAPSED: 10002,
-  DIALOG: 10003,
-  ALERT: 9999
+  // 基础地图图层
+  FENCE_LAYER: 1000,              // .fence-layer (CSS !important)
+  MAP_CONTROLS: 1500,             // 地图控件
+  
+  // 绘制相关图层 (高优先级)
+  FENCE_PATH: 9999,               // 围栏路径图层
+  DRAWING_OVERLAY: 10000,         // .drawing-overlay (CSS !important)  
+  ANCHOR_POINTS: 10001,           // 锚点和控制柄 (CSS !important)
+  FENCE_TOOLBAR: 10002,           // 围栏工具栏 (CSS !important)
+  FENCE_TOOLBAR_COLLAPSED: 10002, // 折叠状态工具栏 (与展开状态同级)
+  
+  // 对话框和提示
+  DIALOG: 10003,                  // 对话框
+  ALERT: 9999                     // 提示信息
 };
 
 // ========== API调用函数 ==========
@@ -195,3 +200,37 @@ export const getConfirmMessage = (action, fenceName) => {
   
   return messages[action] || `Are you sure you want to ${action} fence "${fenceName}"?`;
 }; 
+
+// ========== 样式生成函数 ==========
+
+/**
+ * 生成围栏图层CSS样式字符串
+ * 确保CSS中的z-index值与JavaScript常量一致
+ */
+export const generateFenceLayerCSS = () => `
+  .fence-layer {
+    z-index: ${Z_INDEX.FENCE_LAYER} !important;
+    pointer-events: auto !important;
+  }
+  .leaflet-interactive.fence-layer {
+    z-index: ${Z_INDEX.FENCE_LAYER} !important;
+  }
+  .drawing-overlay {
+    z-index: ${Z_INDEX.DRAWING_OVERLAY} !important;
+    pointer-events: none !important;
+  }
+  .drawing-overlay.active {
+    pointer-events: auto !important;
+  }
+  /* 锚点和控制柄层级 */
+  .leaflet-tooltip-pane {
+    z-index: ${Z_INDEX.ANCHOR_POINTS} !important;
+  }
+  .leaflet-tooltip-pane .leaflet-interactive {
+    z-index: ${Z_INDEX.ANCHOR_POINTS} !important;
+  }
+  /* 围栏工具栏层级 */
+  [data-drawing-toolbar="true"] {
+    z-index: ${Z_INDEX.FENCE_TOOLBAR} !important;
+  }
+`; 
