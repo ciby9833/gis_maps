@@ -1,24 +1,36 @@
+// 围栏编辑创建组件 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Paper, Typography, TextField, Button, IconButton, FormControl, InputLabel, Select, MenuItem, Slider, Alert, CircularProgress, Grid, Chip, Tooltip, Divider, ButtonGroup } from "@mui/material";
 import { Close, Save, Cancel, Draw, Edit, Square, Palette, Delete, Undo, Redo } from "@mui/icons-material";
 import { useTranslation } from "react-i18next";
-import { createFence, updateFence, validateFenceGeometry } from '../utils/fenceAPI';
+import { useLoadingState } from '../hooks/useLoadingState';
+import { 
+  createFence, 
+  updateFence,
+  FENCE_COLORS, 
+  Z_INDEX,
+  validateFenceData, 
+  normalizeError 
+} from '../utils/fenceUtils';
 
 /**
  * 围栏工具栏组件
  * 在地图顶部显示围栏创建和编辑界面
+ * 简化后的版本，移除重复逻辑
  */
 const FenceToolbar = ({
   visible,
   mode = "create", // 'create' | 'edit'
   fence = null,
   mapInstance,
-  apiBaseUrl,
   onClose,
   onSuccess,
   onDrawingStateChange,
 }) => {
   const { t } = useTranslation();
+
+  // 统一的loading状态管理
+  const { loading, error, startLoading, stopLoading, setErrorState, clearError } = useLoadingState();
 
   // 表单状态
   const [formData, setFormData] = useState({
@@ -35,8 +47,6 @@ const FenceToolbar = ({
 
   // 几何和状态
   const [geometry, setGeometry] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const [drawingMode, setDrawingMode] = useState("polygon"); // 'polygon' | 'rectangle'
@@ -62,9 +72,6 @@ const FenceToolbar = ({
       return () => clearInterval(interval);
     }
   }, [isDrawing, mapInstance, updateAnchorCount]);
-
-  // 预设颜色
-  const presetColors = ["#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF", "#00FFFF", "#FFA500", "#800080", "#008000", "#808080", "#000000", "#FFFFFF"];
 
   // 初始化表单数据
   useEffect(() => {
@@ -100,9 +107,9 @@ const FenceToolbar = ({
     }
 
     // 清除错误和验证状态
-    setError(null);
+    clearError();
     setValidationErrors({});
-  }, [mode, fence, visible]);
+  }, [mode, fence, visible, clearError]);
 
   // 开始绘制
   const startDrawing = useCallback(() => {
@@ -279,21 +286,16 @@ const FenceToolbar = ({
 
   // 表单验证
   const validateForm = useCallback(() => {
-    const errors = {};
-
-    // 基本信息验证
-    if (!formData.fence_name.trim()) {
-      errors.fence_name = t("fenceToolbar.fenceNameRequired");
-    }
-
-    // 几何验证 - 编辑模式下如果有围栏数据就不需要验证
-    if (!geometry && !(mode === "edit" && fence && fence.geometry)) {
-      errors.geometry = t("fenceToolbar.drawFenceOnMap");
-    }
-
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
-  }, [formData, geometry, mode, fence, t]);
+    const fenceData = {
+      ...formData,
+      fence_geometry: geometry || (mode === "edit" && fence ? fence.geometry : null)
+    };
+    
+    const validation = validateFenceData(fenceData);
+    setValidationErrors(validation.errors);
+    
+    return validation.isValid;
+  }, [formData, geometry, mode, fence]);
 
   // 保存围栏
   const handleSave = useCallback(async () => {
@@ -302,8 +304,7 @@ const FenceToolbar = ({
     }
 
     try {
-      setLoading(true);
-      setError(null);
+      startLoading();
 
       // 使用当前几何数据或编辑模式下的原始几何数据
       const geometryData = geometry || (mode === "edit" && fence ? fence.geometry : null);
@@ -329,11 +330,11 @@ const FenceToolbar = ({
       handleClose();
     } catch (error) {
       console.error(`${mode === "create" ? "创建" : "更新"}围栏失败:`, error);
-      setError(error.message);
+      setErrorState(normalizeError(error));
     } finally {
-      setLoading(false);
+      stopLoading();
     }
-  }, [formData, geometry, mode, fence, apiBaseUrl, onSuccess, validateForm]);
+  }, [formData, geometry, mode, fence, onSuccess, validateForm, startLoading, stopLoading, setErrorState]);
 
   // 关闭工具栏
   const handleClose = useCallback(() => {
@@ -389,7 +390,7 @@ const FenceToolbar = ({
           top: 20,
           left: "50%",
           transform: "translateX(-50%)",
-          zIndex: 10002,
+          zIndex: Z_INDEX.FENCE_TOOLBAR_COLLAPSED,
           p: 1,
           backgroundColor: "rgba(255, 255, 255, 0.95)",
           backdropFilter: "blur(5px)",
@@ -425,7 +426,7 @@ const FenceToolbar = ({
         width: "90%",
         maxWidth: "800px",
         minHeight: "400px",
-        zIndex: 10002,
+        zIndex: Z_INDEX.FENCE_TOOLBAR,
         p: 3,
         backgroundColor: "rgba(255, 255, 255, 0.98)",
         backdropFilter: "blur(10px)",
@@ -494,7 +495,7 @@ const FenceToolbar = ({
                   {t("fenceToolbar.color")}
                 </Typography>
                 <Box display="flex" gap={0.5} mb={1} flexWrap="wrap">
-                  {presetColors.map((color) => (
+                  {FENCE_COLORS.map((color) => (
                     <Box
                       key={color}
                       sx={{

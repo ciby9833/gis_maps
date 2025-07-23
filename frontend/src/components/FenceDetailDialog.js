@@ -1,3 +1,4 @@
+// 围栏详情对话框组件
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
@@ -9,7 +10,6 @@ import {
   Box,
   Typography,
   Chip,
-  Divider,
   Alert,
   CircularProgress,
   Accordion,
@@ -22,13 +22,13 @@ import {
   Card,
   CardContent,
   Grid,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
   TableContainer,
   TableHead,
-  TableRow
+  TableRow,
+  TableCell,
+  TableBody,
+  Table,
+  Paper
 } from '@mui/material';
 import {
   Close,
@@ -37,8 +37,6 @@ import {
   ExpandMore,
   Warning,
   Analytics,
-  Map,
-  Timeline,
   Info,
   CheckCircle,
   ErrorOutline,
@@ -47,28 +45,37 @@ import {
   Square
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
-import { detectFenceOverlaps, getFenceLayerAnalysis } from '../utils/fenceAPI';
+import { useLoadingState } from '../hooks/useLoadingState';
+import { 
+  detectFenceOverlaps, 
+  getFenceLayerAnalysis,
+  formatArea, 
+  formatDateTime, 
+  Z_INDEX,
+  getOverlapSeverityColor,
+  normalizeError
+} from '../utils/fenceUtils';
 
 /**
  * 围栏详情对话框组件
+ * 简化后的版本，移除重复逻辑
  */
 const FenceDetailDialog = ({ 
   open, 
   onClose, 
   fence, 
-  apiBaseUrl, 
   mapInstance,
   onEdit,
   onDelete 
 }) => {
   const { t } = useTranslation();
 
+  // 统一的loading状态管理
+  const { loading, error, startLoading, stopLoading, setErrorState } = useLoadingState();
+
   // 状态管理
-  const [detailData, setDetailData] = useState(null);
   const [overlapData, setOverlapData] = useState(null);
   const [layerAnalysis, setLayerAnalysis] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [activeAccordion, setActiveAccordion] = useState('basic');
 
   // 加载详细数据
@@ -76,8 +83,7 @@ const FenceDetailDialog = ({
     if (!fence || !fence.id) return;
 
     try {
-      setLoading(true);
-      setError(null);
+      startLoading();
 
       // 并行加载重叠检测和图层分析
       const [overlapResult, layerResult] = await Promise.allSettled([
@@ -97,53 +103,24 @@ const FenceDetailDialog = ({
 
     } catch (error) {
       console.error('加载围栏详情失败:', error);
-      setError(error.message);
+      setErrorState(normalizeError(error));
     } finally {
-      setLoading(false);
+      stopLoading();
     }
-  }, [fence]);
+  }, [fence, startLoading, stopLoading, setErrorState]);
 
   // 组件打开时加载数据
   useEffect(() => {
     if (open && fence) {
-      setDetailData(fence);
       loadDetailData();
     }
   }, [open, fence, loadDetailData]);
-
-  // 格式化面积显示
-  const formatArea = (area) => {
-    if (!area) return 'N/A';
-    if (area < 1000) {
-      return `${area.toFixed(1)} m²`;
-    } else if (area < 1000000) {
-      return `${(area / 1000).toFixed(2)} km²`;
-    } else {
-      return `${(area / 1000000).toFixed(2)} km²`;
-    }
-  };
-
-  // 格式化时间显示
-  const formatDateTime = (dateStr) => {
-    if (!dateStr) return 'N/A';
-    const date = new Date(dateStr);
-    return date.toLocaleString('zh-CN');
-  };
-
-  // 获取重叠严重程度颜色
-  const getOverlapSeverityColor = (percentage) => {
-    if (percentage > 50) return 'error';
-    if (percentage > 20) return 'warning';
-    if (percentage > 5) return 'info';
-    return 'success';
-  };
 
   // 定位到围栏
   const focusOnFence = useCallback(() => {
     if (!mapInstance || !fence || !fence.geometry) return;
 
     try {
-      // 如果有几何数据，定位到围栏
       if (fence.geometry.type === 'Polygon') {
         const coordinates = fence.geometry.coordinates[0];
         const bounds = coordinates.reduce((bounds, coord) => {
@@ -168,7 +145,7 @@ const FenceDetailDialog = ({
       PaperProps={{
         sx: { 
           maxHeight: '90vh',
-          zIndex: 10003 // 确保对话框在绘制工具之上
+          zIndex: Z_INDEX.DIALOG
         }
       }}
     >

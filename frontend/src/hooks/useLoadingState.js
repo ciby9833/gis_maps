@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
 
 /**
- * 简单的loading状态管理Hook
- * 合并各组件中重复的loading、error状态逻辑
+ * 统一的loading状态管理Hook
+ * 简化版本，合并各组件中重复的loading、error状态逻辑
  */
 export const useLoadingState = (initialLoading = false) => {
   const [loading, setLoading] = useState(initialLoading);
@@ -32,8 +32,6 @@ export const useLoadingState = (initialLoading = false) => {
     startLoading,
     stopLoading,
     setErrorState,
-    clearError,
-    setLoading, // 直接设置loading状态
-    setError    // 直接设置error状态
+    clearError
   };
 }; 

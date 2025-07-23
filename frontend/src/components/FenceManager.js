@@ -1,3 +1,4 @@
+ // 围栏列表管理组件
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
@@ -14,20 +15,13 @@ import {
   Select,
   MenuItem,
   Chip,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  Divider,
   Alert,
   CircularProgress,
-  Tooltip,
   Paper,
   Grid,
   Card,
   CardContent,
   CardActions,
-  Fab,
   Badge
 } from '@mui/material';
 import {
@@ -36,29 +30,35 @@ import {
   Edit,
   Delete,
   Visibility,
-  VisibilityOff,
   Search,
   Refresh,
   Map,
-  Analytics,
-  Warning,
   CheckCircle,
+  Warning,
+  VisibilityOff,
   Info
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import FenceDetailDialog from './FenceDetailDialog';
-import { getFenceList, deleteFence } from '../utils/fenceAPI';
 import { useLoadingState } from '../hooks/useLoadingState';
+import { 
+  getFenceList, 
+  deleteFence,
+  formatArea, 
+  getFenceStatusColor, 
+  Z_INDEX,
+  getConfirmMessage,
+  normalizeError
+} from '../utils/fenceUtils';
 
 /**
  * 围栏管理器主组件
+ * 简化后的版本，移除重复逻辑
  */
 const FenceManager = ({ 
   open, 
   onClose, 
-  apiBaseUrl, 
   mapInstance, 
-  currentBounds, 
   onFenceSelect, 
   onFenceCreate, 
   onFenceEdit, 
@@ -68,10 +68,12 @@ const FenceManager = ({
 }) => {
   const { t } = useTranslation();
   
+  // 统一的loading状态管理
+  const { loading, error, startLoading, stopLoading, setErrorState } = useLoadingState();
+
   // 围栏数据管理  
   const [fences, setFences] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
-  const { loading, error, startLoading, stopLoading, setErrorState } = useLoadingState();
 
   // 组件状态
   const [searchQuery, setSearchQuery] = useState('');
@@ -79,7 +81,6 @@ const FenceManager = ({
   const [typeFilter, setTypeFilter] = useState('');
   const [selectedFence, setSelectedFence] = useState(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [pageSize] = useState(20);
 
@@ -98,12 +99,6 @@ const FenceManager = ({
         params.fence_type = typeFilter;
       }
 
-      // 🔥 围栏管理器不使用bbox过滤，显示全部围栏便于管理
-      // if (currentBounds) {
-      //   const bbox = `${currentBounds.getWest()},${currentBounds.getSouth()},${currentBounds.getEast()},${currentBounds.getNorth()}`;
-      //   params.bbox = bbox;
-      // }
-
       const response = await getFenceList(params);
       
       if (response.success) {
@@ -114,11 +109,11 @@ const FenceManager = ({
       }
     } catch (error) {
       console.error('加载围栏数据失败:', error);
-      setErrorState(error.message);
+      setErrorState(normalizeError(error));
     } finally {
       stopLoading();
     }
-  }, [statusFilter, typeFilter, page, pageSize, startLoading, stopLoading, setErrorState]); // 移除currentBounds和apiBaseUrl依赖
+  }, [statusFilter, typeFilter, page, pageSize, startLoading, stopLoading, setErrorState]);
 
   // 组件挂载时加载数据
   useEffect(() => {
@@ -133,13 +128,7 @@ const FenceManager = ({
       loadFenceData();
       return;
     }
-
-    try {
-      // 这里可以实现搜索逻辑
-      // 暂时使用过滤已加载的数据
-    } catch (error) {
-      console.error('搜索围栏失败:', error);
-    }
+    // 这里可以实现搜索逻辑
   }, [searchQuery, loadFenceData]);
 
   // 查看围栏详情
@@ -157,41 +146,39 @@ const FenceManager = ({
     if (onFenceEdit) {
       onFenceEdit(fence);
     }
-    // 关闭管理器对话框，让用户使用工具栏
     onClose();
   }, [onFenceEdit, onClose]);
 
   // 删除围栏
   const handleDelete = useCallback(async (fence) => {
-    if (!window.confirm(t('fenceManager.confirmDelete', { name: fence.fence_name }))) {
+    const confirmMessage = getConfirmMessage('delete', fence.fence_name);
+    if (!window.confirm(confirmMessage)) {
       return;
     }
 
     try {
-      setActionLoading(true);
+      startLoading();
       await deleteFence(fence.id);
       
       if (onFenceDelete) {
         onFenceDelete(fence);
       }
       
-      // 重新加载数据
       await loadFenceData();
       
     } catch (error) {
-      console.error(t('fenceManager.deleteFailed'), error);
-      alert(t('fenceManager.deleteFailed') + ': ' + error.message);
+      console.error('删除围栏失败:', error);
+      setErrorState(normalizeError(error));
     } finally {
-      setActionLoading(false);
+      stopLoading();
     }
-  }, [onFenceDelete, loadFenceData, t]);
+  }, [onFenceDelete, loadFenceData, startLoading, stopLoading, setErrorState]);
 
   // 创建围栏
   const handleCreate = useCallback(() => {
     if (onFenceCreate) {
       onFenceCreate();
     }
-    // 关闭管理器对话框，让用户使用工具栏
     onClose();
   }, [onFenceCreate, onClose]);
 
@@ -199,46 +186,6 @@ const FenceManager = ({
   const handleRefresh = useCallback(() => {
     loadFenceData();
   }, [loadFenceData]);
-
-  // 获取围栏状态颜色
-  const getFenceStatusColor = (status) => {
-    switch (status) {
-      case 'active':
-        return 'success';
-      case 'inactive':
-        return 'warning';
-      case 'deleted':
-        return 'error';
-      default:
-        return 'default';
-    }
-  };
-
-  // 获取围栏状态图标
-  const getFenceStatusIcon = (status) => {
-    switch (status) {
-      case 'active':
-        return <CheckCircle />;
-      case 'inactive':
-        return <Warning />;
-      case 'deleted':
-        return <VisibilityOff />;
-      default:
-        return <Info />;
-    }
-  };
-
-  // 格式化面积显示
-  const formatArea = (area) => {
-    if (!area) return 'N/A';
-    if (area < 1000) {
-      return `${area.toFixed(1)} m²`;
-    } else if (area < 1000000) {
-      return `${(area / 1000).toFixed(2)} km²`;
-    } else {
-      return `${(area / 1000000).toFixed(2)} km²`;
-    }
-  };
 
   // 过滤围栏数据
   const filteredFences = fences.filter(fence => {
@@ -264,7 +211,7 @@ const FenceManager = ({
           sx: { 
             minHeight: '70vh', 
             maxHeight: '90vh',
-            zIndex: 10003 // 确保对话框在绘制工具之上
+            zIndex: Z_INDEX.DIALOG
           }
         }}
       >
@@ -357,7 +304,6 @@ const FenceManager = ({
                   >
                     {t('fenceManager.refresh')}
                   </Button>
-
                 </Box>
               </Grid>
             </Grid>
@@ -410,7 +356,11 @@ const FenceManager = ({
                             </Typography>
                             <Chip
                               size="small"
-                              icon={getFenceStatusIcon(fence.fence_status)}
+                              icon={
+                                fence.fence_status === 'active' ? <CheckCircle /> :
+                                fence.fence_status === 'inactive' ? <Warning /> :
+                                fence.fence_status === 'deleted' ? <VisibilityOff /> : <Info />
+                              }
                               label={fence.fence_status}
                               color={getFenceStatusColor(fence.fence_status)}
                             />
@@ -482,7 +432,7 @@ const FenceManager = ({
                             size="small" 
                             color="error"
                             startIcon={<Delete />}
-                            disabled={actionLoading}
+                            disabled={loading}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleDelete(fence);
@@ -541,7 +491,6 @@ const FenceManager = ({
           setSelectedFence(null);
         }}
         fence={selectedFence}
-        apiBaseUrl={apiBaseUrl}
         mapInstance={mapInstance}
         onEdit={handleEdit}
         onDelete={handleDelete}
@@ -549,7 +498,7 @@ const FenceManager = ({
 
       {/* 工具栏激活提示 */}
       {toolbarVisible && (
-        <Alert severity="info" sx={{ position: 'fixed', bottom: 16, right: 16, zIndex: 9999 }}>
+        <Alert severity="info" sx={{ position: 'fixed', bottom: 16, right: 16, zIndex: Z_INDEX.ALERT }}>
           {t('fenceManager.toolbarActive')}
         </Alert>
       )}
