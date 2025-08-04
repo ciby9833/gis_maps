@@ -358,7 +358,7 @@
     "details": "Details",
     "edit": "Edit",
     "delete": "Delete",
-    "confirmDelete": "Are you sure you want to delete fence \"{name}\"?",
+    "confirmDelete": "Are you sure you want to delete fence \"{{name}}\"?",
     "deleteSuccess": "Fence deleted successfully",
     "deleteFailed": "Failed to delete fence",
     "showing": "Showing",

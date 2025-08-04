@@ -358,7 +358,7 @@
     "details": "详情",
     "edit": "编辑",
     "delete": "删除",
-    "confirmDelete": "确定要删除围栏 \"{name}\" 吗？",
+    "confirmDelete": "确定要删除围栏 \"{{name}}\" 吗？",
     "deleteSuccess": "围栏删除成功",
     "deleteFailed": "删除围栏失败",
     "showing": "显示",

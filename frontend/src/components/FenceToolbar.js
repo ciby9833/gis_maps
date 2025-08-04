@@ -1,17 +1,10 @@
-// 围栏编辑创建组件 
+// 围栏编辑创建组件
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Paper, Typography, TextField, Button, IconButton, FormControl, InputLabel, Select, MenuItem, Slider, Alert, CircularProgress, Grid, Chip, Tooltip, Divider, ButtonGroup } from "@mui/material";
 import { Close, Save, Cancel, Draw, Edit, Square, Palette, Delete, Undo, Redo } from "@mui/icons-material";
 import { useTranslation } from "react-i18next";
-import { useLoadingState } from '../hooks/useLoadingState';
-import { 
-  createFence, 
-  updateFence,
-  FENCE_COLORS, 
-  Z_INDEX,
-  validateFenceData, 
-  normalizeError 
-} from '../utils/fenceUtils';
+import { useLoadingState } from "../hooks/useLoadingState";
+import { createFence, updateFence, FENCE_COLORS, Z_INDEX, validateFenceData, normalizeError } from "../utils/fenceUtils";
 
 /**
  * 围栏工具栏组件
@@ -30,7 +23,7 @@ const FenceToolbar = ({
 
   // 自动判断操作模式
   const isEditMode = Boolean(fence);
-  
+
   // 统一的loading状态管理
   const { loading, error, startLoading, stopLoading, setErrorState, clearError } = useLoadingState();
 
@@ -124,9 +117,9 @@ const FenceToolbar = ({
     setAnchorCount(0); // 重置锚点计数
 
     // 通知MapViewer更新绘制状态
-    if (onDrawingStateChange) {
-      onDrawingStateChange(true);
-    }
+    // if (onDrawingStateChange) {
+    //   onDrawingStateChange(true);
+    // }
 
     // 启动绘制工具
     if (mapInstance.customDrawTools) {
@@ -167,7 +160,7 @@ const FenceToolbar = ({
         if (anchors.length >= 3) {
           // 调用CustomDrawTools的完成绘制方法，这会立即显示围栏
           const result = mapInstance.customDrawTools.finishDrawing();
-          
+
           if (result && result.geometry) {
             setGeometry(result.geometry);
             console.log("围栏绘制完成，几何数据已获取:", result.geometry);
@@ -238,13 +231,10 @@ const FenceToolbar = ({
       const startEditMode = () => {
         try {
           console.log("进入编辑模式，围栏数据:", fence);
-          
+
           // 使用CustomDrawTools的编辑模式
           if (mapInstance.customDrawTools && mapInstance.customDrawTools.enterEditMode) {
-            mapInstance.customDrawTools.enterEditMode(
-              fence.geometry, 
-              fence.anchors || null
-            );
+            mapInstance.customDrawTools.enterEditMode(fence.geometry, fence.anchors || null);
             console.log("CustomDrawTools编辑模式已启动");
           } else {
             console.warn("CustomDrawTools编辑功能不可用，等待初始化...");
@@ -255,7 +245,7 @@ const FenceToolbar = ({
           console.error("显示编辑围栏几何失败:", error);
         }
       };
-      
+
       // 稍微延迟启动，确保CustomDrawTools已经完全初始化
       setTimeout(startEditMode, 100);
     }
@@ -284,12 +274,12 @@ const FenceToolbar = ({
   const validateForm = useCallback(() => {
     const fenceData = {
       ...formData,
-      fence_geometry: geometry || (fence ? fence.geometry : null)
+      fence_geometry: geometry || (fence ? fence.geometry : null),
     };
-    
+
     const validation = validateFenceData(fenceData);
     setValidationErrors(validation.errors);
-    
+
     return validation.isValid;
   }, [formData, geometry, fence]);
 
@@ -313,9 +303,11 @@ const FenceToolbar = ({
       };
 
       let result;
-      if (!fence) { // 新增模式
+      if (!fence) {
+        // 新增模式
         result = await createFence(submitData);
-      } else { // 编辑模式
+      } else {
+        // 编辑模式
         result = await updateFence(fence.id, submitData);
       }
 
@@ -372,12 +364,12 @@ const FenceToolbar = ({
         mapInstance.customDrawTools.clearDrawing();
         console.log("CustomDrawTools绘制已清理");
       }
-      
+
       // 清理FenceToolbar的图层
       if (drawLayerRef.current) {
         drawLayerRef.current.clearLayers();
       }
-      
+
       // 重置几何数据
       setGeometry(null);
       console.log("围栏绘制已清除");
