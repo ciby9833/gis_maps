@@ -1,13 +1,18 @@
-fastapi==0.108.0
+fastapi==0.115.2
 uvicorn[standard]==0.24.0
 psycopg2-binary==2.9.10
-python-multipart==0.0.6
-requests==2.31.0 
+python-multipart==0.0.18
+requests==2.32.3
 asyncpg==0.30.0
-python-dotenv==1.0.0
+python-dotenv==1.0.1
 # 电子围栏功能新增依赖
 shapely==2.0.3
 pyproj==3.6.1
 redis==5.0.1
 pydantic==2.10.4
 aiofiles==23.2.0
+
+gradio==5.23.1
+starlette==0.40.0
+boto3==1.35.74
+aiohttp

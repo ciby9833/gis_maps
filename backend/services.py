@@ -203,6 +203,7 @@ async def init_db_pool():
             logger.error("asyncpg未安装，请运行: pip install asyncpg")
             raise
         
+        print(f"🔄 初始化数据库连接池 - 主库配置: {ASYNC_DB_CONFIG}")
         # 创建主数据库连接池（写操作）
         db_pool = await asyncpg.create_pool(**ASYNC_DB_CONFIG)
         logger.info(f"主数据库连接池已创建: min_size={ASYNC_DB_CONFIG['min_size']}, max_size={ASYNC_DB_CONFIG['max_size']}")

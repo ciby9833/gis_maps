@@ -380,16 +380,16 @@ async def get_fence_list(
 ) -> Dict[str, Any]:
     """获取围栏列表"""
     try:
-        # 构建缓存键
-        cache_key = get_cache_key("fence_list", 
-                                 status=status, fence_type=fence_type, 
-                                 group_id=group_id, owner_id=owner_id, 
-                                 bbox=bbox, limit=limit, offset=offset)
+        # # 构建缓存键
+        # cache_key = get_cache_key("fence_list", 
+        #                          status=status, fence_type=fence_type, 
+        #                          group_id=group_id, owner_id=owner_id, 
+        #                          bbox=bbox, limit=limit, offset=offset)
         
-        # 检查缓存
-        cached_result = await get_cache_value(cache_key, 'fence_list')
-        if cached_result:
-            return cached_result
+        # # 检查缓存
+        # cached_result = await get_cache_value(cache_key, 'fence_list')
+        # if cached_result:
+        #     return cached_result
         
         pool = await get_db_connection(read_only=True)
         async with pool.acquire() as conn:
@@ -484,7 +484,7 @@ async def get_fence_list(
                 result["fences"].append(fence_dict)
             
             # 缓存结果
-            await set_cache_value(cache_key, result, 'fence_list')
+            # await set_cache_value(cache_key, result, 'fence_list')
             
             return result
     
